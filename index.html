@@ -1,1 +1,1631 @@
-<html><body>Dashboard loading...</body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>365TUNE Outreach Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f0f2f5; color: #1a1a2e; }
+
+  /* ── Login overlay ── */
+  #login-overlay {
+    position: fixed; inset: 0; background: #1a1a2e;
+    display: flex; align-items: center; justify-content: center; z-index: 999;
+  }
+  .login-box {
+    background: white; border-radius: 16px; padding: 48px 40px;
+    width: 360px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .login-box h1 { font-size: 22px; margin-bottom: 6px; color: #1a1a2e; }
+  .login-box p  { color: #666; font-size: 14px; margin-bottom: 28px; }
+  .login-box input {
+    width: 100%; padding: 12px 16px; border: 1.5px solid #e0e0e0;
+    border-radius: 8px; font-size: 15px; outline: none; margin-bottom: 12px;
+  }
+  .login-box input:focus { border-color: #4f46e5; }
+  .login-box button {
+    width: 100%; padding: 13px; background: #4f46e5; color: white;
+    border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background .2s;
+  }
+  .login-box button:hover { background: #4338ca; }
+  .login-error { color: #e53e3e; font-size: 13px; margin-top: 8px; display:none; }
+
+  /* ── Main layout ── */
+  #main { display: none; }
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: white; padding: 24px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header small { opacity: .6; font-size: 12px; }
+  .container { max-width: 1300px; margin: 0 auto; padding: 28px 24px; }
+
+  /* ── Stat cards ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px; margin-bottom: 28px;
+  }
+  .stat-card {
+    background: white; border-radius: 12px; padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .stat-card .label { font-size: 12px; color: #888; text-transform: uppercase;
+                       letter-spacing: .5px; margin-bottom: 6px; }
+  .stat-card .value { font-size: 32px; font-weight: 700; color: #1a1a2e; }
+  .stat-card .sub   { font-size: 12px; color: #aaa; margin-top: 4px; }
+  .stat-card.highlight .value { color: #4f46e5; }
+  .stat-card.green    .value { color: #10b981; }
+  .stat-card.amber    .value { color: #f59e0b; }
+  .stat-card.red      .value { color: #ef4444; }
+
+  /* ── Cards ── */
+  .card {
+    background: white; border-radius: 12px; padding: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 24px;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 18px; color: #333; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #f0f0f0;
+       font-size: 12px; text-transform: uppercase; color: #999; letter-spacing: .4px; }
+  td { padding: 12px 12px; border-bottom: 1px solid #f7f7f7; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafafa; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+  }
+  .badge.sent      { background: #d1fae5; color: #065f46; }
+  .badge.failed    { background: #fee2e2; color: #991b1b; }
+  .badge.active    { background: #dbeafe; color: #1e40af; }
+  .badge.completed { background: #ede9fe; color: #5b21b6; }
+  .badge.replied   { background: #fef3c7; color: #92400e; }
+
+  /* ── Progress bar ── */
+  .progress-bar {
+    background: #f0f0f0; border-radius: 4px; height: 6px;
+    width: 120px; margin-bottom: 4px;
+  }
+  .progress-fill { background: #4f46e5; height: 6px; border-radius: 4px; }
+
+  /* ── Two-col grid ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  canvas { max-height: 220px; }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-overlay">
+  <div class="login-box">
+    <h1>365TUNE</h1>
+    <p>Outreach Dashboard</p>
+    <input type="password" id="pw-input" placeholder="Enter password"
+           onkeydown="if(event.key==='Enter') doLogin()"/>
+    <button onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="pw-error">Incorrect password. Try again.</div>
+  </div>
+</div>
+
+<!-- Main dashboard -->
+<div id="main">
+  <div class="header">
+    <div>
+      <h1>365TUNE Outreach Dashboard</h1>
+      <small>Last updated: March 17, 2026 21:04 UTC</small>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- Stat cards -->
+    <div class="stats-grid">
+      <div class="stat-card highlight">
+        <div class="label">Total Prospects</div>
+        <div class="value">24713</div>
+      </div>
+      <div class="stat-card green">
+        <div class="label">Emails Sent</div>
+        <div class="value">2101</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Sent Today</div>
+        <div class="value">200</div>
+        <div class="sub">Due today: 6675</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Active</div>
+        <div class="value">2515</div>
+        <div class="sub">sequences running</div>
+      </div>
+      <div class="stat-card green">
+        <div class="label">Completed</div>
+        <div class="value">0</div>
+        <div class="sub">all 5 sent</div>
+      </div>
+      <div class="stat-card amber">
+        <div class="label">Replied</div>
+        <div class="value">0</div>
+      </div>
+      <div class="stat-card red">
+        <div class="label">Failed</div>
+        <div class="value">0</div>
+        <div class="sub">email sends</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Errors</div>
+        <div class="value">22197</div>
+        <div class="sub">pipeline errors</div>
+      </div>
+    </div>
+
+    <!-- Chart + pipeline status -->
+    <div class="two-col">
+      <div class="card">
+        <h2>Daily Sends — Last 14 Days</h2>
+        <canvas id="sendChart"></canvas>
+      </div>
+      <div class="card">
+        <h2>Pipeline Status</h2>
+        <table>
+          <tr><th>Stage</th><th>Count</th></tr>
+          <tr><td>Pending research</td><td>0</td></tr>
+          <tr><td>Researching</td><td>0</td></tr>
+          <tr><td>Researched</td><td>1</td></tr>
+          <tr><td>Emails ready</td><td>0</td></tr>
+          <tr><td>Active drip</td><td>2515</td></tr>
+          <tr><td>Completed</td><td>0</td></tr>
+          <tr><td>Replied</td><td>0</td></tr>
+          <tr><td>Unsubscribed</td><td>0</td></tr>
+          <tr><td>Error</td><td>22197</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Active sequences -->
+    <div class="card">
+      <h2>Sequences (Active / Completed / Replied)</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Company</th><th>Progress</th>
+            <th>Status</th><th>Next Send</th>
+          </tr></thead>
+          <tbody>
+        <tr>
+          <td><strong>Mohr </strong><br><small>Director  IT Development</small></td>
+          <td>Atlas</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Frank </strong><br><small>Director, IT</small></td>
+          <td>ACV Auctions</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Adnan Adil</strong><br><small>Chief Information Officer and Platform Engineering</small></td>
+          <td>Magic Leap</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Adam Alag</strong><br><small>Global Director of IT Infrastructure</small></td>
+          <td>Luminex</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Itamar Albek</strong><br><small>Chief Information Officer</small></td>
+          <td>JDC</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Oren Alexandroni</strong><br><small>Chief Information Officer</small></td>
+          <td>DoubleVerify</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Erin Allen</strong><br><small>Director - IT Strategy, Digital & Architecture</small></td>
+          <td>Sargento Foods</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Matt Amole</strong><br><small>Group IT and Digital Director - Corporate Functions and Enterprise Architecture</small></td>
+          <td>Carmeuse</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Raymond Andrews</strong><br><small>Chief Information Officer</small></td>
+          <td>United Site Services</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Eric Andrews</strong><br><small>Senior Director of IT</small></td>
+          <td>Nextiva</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Amy Arendt</strong><br><small>IT Director, Business Solutions</small></td>
+          <td>Oldcastle Infrastructure</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Kevin Arts</strong><br><small>Director, Information Technology</small></td>
+          <td>BroadPath</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Sharwari Athavale</strong><br><small>Director IT Program Management & Compliance</small></td>
+          <td>Nevro</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Larry Aubrey</strong><br><small>CIO & Director Media Design</small></td>
+          <td>True Manufacturing</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Michael Austin</strong><br><small>Assistant Director of IT</small></td>
+          <td>Salk Institute for Biological Studies</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Dean B.</strong><br><small>IT Director of Global Applications</small></td>
+          <td>Avanos Medical</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Abdul Badruddin</strong><br><small>Chief Information Security Officer (CISO)</small></td>
+          <td>Khoros</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Randy Bagby</strong><br><small>Director, IT Infrastructure</small></td>
+          <td>The IRONMAN Group</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>David Balemi</strong><br><small>IT Director, Governance & Insights</small></td>
+          <td>Ports America</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Mike Ballanco</strong><br><small>SVP, Chief Information Officer</small></td>
+          <td>Hachette Book Group</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Rob Balon</strong><br><small>Senior Vice President, Operations & Chief Information Officer</small></td>
+          <td>Renzenberger</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Lakshmin Balusu</strong><br><small>Chief Information Officer</small></td>
+          <td>Now Optics</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Rene Barreda</strong><br><small>Chief People Officer - People, Facilities and IT</small></td>
+          <td>Mitratech</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Marion Bass</strong><br><small>Chief Technology Officer</small></td>
+          <td>AmeriSave Mortgage</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Tony Bender</strong><br><small>Global CIO</small></td>
+          <td>Culligan International</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Bill Bernhey</strong><br><small>Cluster Director Of Information Technology</small></td>
+          <td>Rosewood Hotels & Resorts</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Richard Bertalan</strong><br><small>Chief Information Technology Officer</small></td>
+          <td>VTA</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Shantanu Bhosekar</strong><br><small>Director of IT</small></td>
+          <td>U.S. Venture</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Chris Bloomquist</strong><br><small>Sr. Director, IT Enterprise Infrastructure</small></td>
+          <td>Ferrara</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Natalia Blum</strong><br><small>Deputy Director of Information Technology and Security</small></td>
+          <td>Internews</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Rick Boulin</strong><br><small>Chief Information Officer</small></td>
+          <td>Baker Botts</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Jeremy Bowers</strong><br><small>Chief Technology Officer</small></td>
+          <td>POLITICO</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Scott Boyce</strong><br><small>Director, IT Operations</small></td>
+          <td>AmeriLife</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Nicholas Brana</strong><br><small>Corporate IT Director for Kalahari Resorts & Conventions</small></td>
+          <td>Kalahari Resorts & Conventions</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Simeon Brandon</strong><br><small>Director, IT Program Management IPMO</small></td>
+          <td>Valleywise Health</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Carol Brestar</strong><br><small>IT Director, EDI Services</small></td>
+          <td>Zenith American Solutions</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Jeffrey Briand</strong><br><small>Director IT Help Desk Operations</small></td>
+          <td>Travel and Transport</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Kyle Brimley</strong><br><small>Director Of Information Technology</small></td>
+          <td>Utah Transit Authority</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Kevin Brooks</strong><br><small>Chief Information Officer</small></td>
+          <td>Quikrete</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Jim Brushway</strong><br><small>Admin Director of IT</small></td>
+          <td>Cooley Dickinson Hospital</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Frank Bunton</strong><br><small>VP, CISO (Chief Information Security Officer)</small></td>
+          <td>MedImpact Healthcare</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Brian Burgdorf</strong><br><small>Chief Information Officer</small></td>
+          <td>FläktGroup</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>James Burgess</strong><br><small>VP, Chief Privacy & Security Officer</small></td>
+          <td>Commonwealth Care Alliance</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Craig Burns</strong><br><small>Chief Information Officer</small></td>
+          <td>Paradigm</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Wes Burroughs</strong><br><small>Director Information Technology Application Development</small></td>
+          <td>State Auto Insurance</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Terri Butler</strong><br><small>Director of Information Technology</small></td>
+          <td>Compass Health Network</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Malena Cabrera</strong><br><small>Director of IT Strategic Programs</small></td>
+          <td>IEHP</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Sean Cahill</strong><br><small>Director of Global IT Infrastructure</small></td>
+          <td>MarketStar</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Joshua Cameron</strong><br><small>Senior Director, IT Financial Systems</small></td>
+          <td>World Wildlife Fund</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Narda Carlson</strong><br><small>Director of IT & IS Coordinator</small></td>
+          <td>Apollo.io</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Heath Carson</strong><br><small>IT Director</small></td>
+          <td>ACA Group</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Sean Chang</strong><br><small>IT Director</small></td>
+          <td>Foundation Building Materials</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Ram Chava</strong><br><small>Director, IT Applications</small></td>
+          <td>WernerCo</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>John Chelius</strong><br><small>Director of Enterprise IT Operations</small></td>
+          <td>Mannington Mills</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Scott Chinn</strong><br><small>Associate Director of Information Technology</small></td>
+          <td>Amyris</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Christopher Cho</strong><br><small>Principal & Director, IT</small></td>
+          <td>Sequoia</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Kellie Christensen</strong><br><small>Chief Information Officer, Gray, Inc</small></td>
+          <td>Gray</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Dan Ciccarelli</strong><br><small>Executive Vice President, Chief Information Officer -</small></td>
+          <td>Everi Holdings</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Mike Ciembronowicz</strong><br><small>Director, IT Enterprise Architecture</small></td>
+          <td>KBI Biopharma</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Dustin Collins</strong><br><small>Chief Information Officer</small></td>
+          <td>Element Solutions</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Richard Colvert</strong><br><small>CIO Consultant</small></td>
+          <td>Compass Health Network</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Joshua Conner</strong><br><small>Director, IT Infrastructure</small></td>
+          <td>Centric Brands</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Nick Connors</strong><br><small>Director of IT</small></td>
+          <td>Interplex</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Ryan Cook</strong><br><small>Director of IT</small></td>
+          <td>Caris Life Sciences</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Jason Cosley</strong><br><small>Director of Information Technology</small></td>
+          <td>Hirschbach</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Joseph Cotton</strong><br><small>Associate Director, R&D IT Recruitment</small></td>
+          <td>Planet Pharma</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Scott Cousins</strong><br><small>Chief Information Officer (CIO)</small></td>
+          <td>First Onsite Property Restoration</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Joel Cox</strong><br><small>Director IT DSD</small></td>
+          <td>PRGX Global</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Ed Crawford</strong><br><small>Director, Information Technology Operations</small></td>
+          <td>Wounded Warrior Project</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Stephanie Cunningham</strong><br><small>Sr. Director, IT PMO</small></td>
+          <td>Nolan Transportation Group</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Dawin Daise</strong><br><small>Director, IT Infrastructure</small></td>
+          <td>Women's Care</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Don Dauterive</strong><br><small>Director of Information Technology</small></td>
+          <td>Grimmway Farms</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Christopher Davis</strong><br><small>Chief Information Officer</small></td>
+          <td>The Tile Shop</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Matthew Deboer</strong><br><small>Director, IT Infrastructure</small></td>
+          <td>NextCare</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Nathan Defanti</strong><br><small>Chief Information Officer</small></td>
+          <td>Conemaugh Health System Duke LifePoint Healthcare</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Michael Dehler</strong><br><small>Exec Director, Global IT</small></td>
+          <td>FreeWheel</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Darren Dieckman</strong><br><small>Director Of Information Technology</small></td>
+          <td>TotalMed</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Francis Don</strong><br><small>Director - IT OPS</small></td>
+          <td>CIGNA Group Insurance</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Mike Donaldson</strong><br><small>Director, Information Technology</small></td>
+          <td>Kawasaki Motors Corp. U.S.A</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Jim Dray</strong><br><small>Chief Information Officer</small></td>
+          <td>Thornton Tomasetti</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Nick Drost</strong><br><small>Sr Director, IT Operations</small></td>
+          <td>Atlantic Aviation</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Robin Ducot</strong><br><small>Chief Technology Officer</small></td>
+          <td>SurveyMonkey</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Lynor Duncan</strong><br><small>CIO Policy Manager</small></td>
+          <td>USSOCOM</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Darrin Dyson</strong><br><small>Senior Director of IT Service Management</small></td>
+          <td>Venable</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Jeff Eccles</strong><br><small>SVP and CIO</small></td>
+          <td>Imagine</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Jeff Eckhart</strong><br><small>Executive Director / Chief Information Officer</small></td>
+          <td>El Paso County Colorado USA</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Brown Eddie</strong><br><small>Director of IT</small></td>
+          <td>Tennova Healthcare</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Mark Eglin</strong><br><small>Chief Information Officer</small></td>
+          <td>Golden State</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Donald Elliot</strong><br><small>IT&S Director</small></td>
+          <td>EthosEnergy</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Trebor Evans</strong><br><small>Senior Vice President and Chief Information Security Officer (CISO)</small></td>
+          <td>Dollar Bank</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Edgar-Aaron F.</strong><br><small>Co-Director of Information Technology - Operations</small></td>
+          <td>Thornton Tomasetti</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+            <small>1/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Paul Falor</strong><br><small>Chief Information Officer</small></td>
+          <td>North Highland</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Cindy Ferda</strong><br><small>Director IT Quality and Master Data Management</small></td>
+          <td>IPG</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Beth Fishkind</strong><br><small>Director of IT Support</small></td>
+          <td>RCM Aftermarket Services</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Christian Flo</strong><br><small>CIO</small></td>
+          <td>City Gross</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Robert Florens</strong><br><small>IT Director</small></td>
+          <td>Nefab</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Albert Fong</strong><br><small>Associate Director, IT Business Applications</small></td>
+          <td>Sumitomo Pharma America</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Chris Foster</strong><br><small>Director IT</small></td>
+          <td>Zachry Construction</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Radium Fu</strong><br><small>Director, Global IT</small></td>
+          <td>Newegg</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr>
+        <tr>
+          <td><strong>Andrew Fuentes</strong><br><small>Director of Information Technology</small></td>
+          <td>Tower Semiconductor</td>
+          <td>
+            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            <small>0/5 sent</small>
+          </td>
+          <td><span class="badge active">Active</span></td>
+          <td style="color:#666;font-size:13px">2026-03-01</td>
+        </tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Recent sends -->
+    <div class="card">
+      <h2>Recent Sends</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Company</th><th>Email #</th>
+            <th>Status</th><th>Sent At</th>
+          </tr></thead>
+          <tbody>
+        <tr>
+          <td><strong>Cherry Leinghirankul</strong><br><small>Sales & Commercial Director, Airline IT</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Thorsten Redicker</strong><br><small>IT Project Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Rejean Campeau</strong><br><small>Directeur Pratique Finances</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Shaun Scrivener</strong><br><small>Finance Director - UK & IE</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Viole Frank</strong><br><small>Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Hallie Allen</strong><br><small>IT Program Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Manfred Fenzl</strong><br><small>IT-Manager bei Uniper IT GmbH</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>John Ovali</strong><br><small>Application Manager - Passionate for IT Security and IAM, PAM</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Igor Diaconov</strong><br><small>Senior Global Category Manager - Corporate IT Procurement</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Catarina Coutinho</strong><br><small>Director of IT • Managing Technological Needs and R&D</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Ida Leveau</strong><br><small>Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Dawei Chen</strong><br><small>Senior Director Finance</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Anita Futterer</strong><br><small>Corporate Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Nageswara Gadesina</strong><br><small>Senior IT Project Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Diana Balan</strong><br><small>Assistant Director, Individual Insurance and Financial Services</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Joe Guidarelli</strong><br><small>Director of IT and Office Services</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Julian Cerana</strong><br><small>Senior Director of Financial Planning and Analysis (FP&A)</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Joseph Dazio</strong><br><small>Director - Platform Financial Excellence Lead</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Steve Sapp</strong><br><small>Director of Corporate Finance</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Jonathan Curtis</strong><br><small>Weapons Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:04 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Benjamin Hippmann</strong><br><small>Head of Decentralized IT</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Ngoc Tran</strong><br><small>Finance Manager, Marketing</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Francesca Melani</strong><br><small>Group Finance Director</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Herman Chan</strong><br><small>IT Infrastructure Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Rangita Singh</strong><br><small>Senior Director R&D Strategy, Operations, and Finance</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Ekansha Gupta</strong><br><small>Finance Director - India</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Sean Reynolds</strong><br><small>Group FP&A Data & Systems Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Charmaine Xing</strong><br><small>IT Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Poojitha Dittakavi</strong><br><small>Manager, GTM IT Support</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Emilie Thillet</strong><br><small>Finance Effectiveness and Integration Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Rick Janitscheck</strong><br><small>IT Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Brian Dancsecs</strong><br><small>Manager - IT Infrastucture</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Luke Armstead</strong><br><small>Finance and Reporting Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Helen Kilmartin</strong><br><small>Head of IT Platforms</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Tom Dickens</strong><br><small>International Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Nassim Belkessa</strong><br><small>Ingénieur d’Affaires Manager - Infrastructures IT</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Thomas Heyer</strong><br><small>Finance Director</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Laura Walsh</strong><br><small>Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Aleksandra Savkovic</strong><br><small>Sr Manager, IT Business Applications</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Agnieszka Hartenberger</strong><br><small>Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:03 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Naninder Dosanjh</strong><br><small>Director, Operations Business Risk Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Gabriel Englehart</strong><br><small>Director of IT Business Systems</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Ellen Zhou</strong><br><small>Finance Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Ajay Venkatesh</strong><br><small>Manager IT Remote Network Operations</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Bogdan Zamfir</strong><br><small>Health, Safety & Risk Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Mike McCann</strong><br><small>IT Project Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Bonnie Kosman</strong><br><small>Director of Finance Shared Services Americas</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Jose Corchon</strong><br><small>IT Manager</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Steve Ludwig</strong><br><small>Information Technology Audit Manager, VP</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr>
+        <tr>
+          <td><strong>Anthony Egan</strong><br><small>Lead Research Engineer - Manager of IT for Spacecraft Operations</small></td>
+          <td></td>
+          <td style="text-align:center">Email 2</td>
+          <td><span class="badge sent">Sent</span></td>
+          <td style="color:#666;font-size:13px">Mar 17, 2026 09:02 PM</td>
+        </tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+</div><!-- /main -->
+
+<script>
+// ── Password check (SHA-256, client-side) ─────────────────────────────────────
+const CORRECT_HASH = "e630e90e5ba9df70fcc805c09a86a116dae017c2435825cb60346dd1da90690e";
+
+async function sha256(str) {
+  const buf  = await crypto.subtle.digest("SHA-256",
+    new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function doLogin() {
+  const pw   = document.getElementById("pw-input").value;
+  const hash = await sha256(pw);
+  if (hash === CORRECT_HASH) {
+    sessionStorage.setItem("auth", "1");
+    document.getElementById("login-overlay").style.display = "none";
+    document.getElementById("main").style.display = "block";
+  } else {
+    document.getElementById("pw-error").style.display = "block";
+    document.getElementById("pw-input").value = "";
+  }
+}
+
+// Auto-login if already authenticated this session
+if (sessionStorage.getItem("auth") === "1") {
+  document.getElementById("login-overlay").style.display = "none";
+  document.getElementById("main").style.display = "block";
+}
+
+// ── Daily sends chart ─────────────────────────────────────────────────────────
+const ctx = document.getElementById("sendChart").getContext("2d");
+new Chart(ctx, {
+  type: "bar",
+  data: {
+    labels: ["2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09", "2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-14", "2026-03-15", "2026-03-16", "2026-03-17", "2026-03-03"],
+    datasets: [{
+      label: "Emails Sent",
+      data: [100, 100, 200, 0, 0, 200, 200, 200, 200, 200, 0, 0, 200, 200, 100],
+      backgroundColor: "rgba(79,70,229,0.8)",
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { precision: 0 } },
+      x: { ticks: { font: { size: 11 } } }
+    }
+  }
+});
+</script>
+</body>
+</html>
