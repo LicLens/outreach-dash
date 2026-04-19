@@ -59,9 +59,10 @@
   function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(); }
 
   function buildBlobUrl(sasUrl) {
+    // Reads campaign_app.db — the dashboard snapshot, never the live campaign.db
     if (!sasUrl) return null;
     const idx = sasUrl.indexOf('?');
-    return idx === -1 ? sasUrl + '/campaign.db' : sasUrl.slice(0,idx) + '/campaign.db' + sasUrl.slice(idx);
+    return idx === -1 ? sasUrl + '/campaign_app.db' : sasUrl.slice(0,idx) + '/campaign_app.db' + sasUrl.slice(idx);
   }
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(LS.SETTINGS) || '{}'); } catch { return {}; }
