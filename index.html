@@ -215,15 +215,26 @@
       const rows = [];
       while (stmt.step()) rows.push(stmt.getAsObject());
       stmt.free(); return rows;
-    } catch(e) { console.error('SQL:', e.message, '\n', sql); return []; }
+    } catch(e) {
+      console.error('[SQL error]', e.message, '\n', sql);
+      // Re-throw with a tagged message so callers can surface it
+      const err = new Error(`SQL: ${e.message}`);
+      err.isSqlError = true;
+      throw err;
+    }
   }
-  function dbOne(db, sql, params=[]) { return dbRun(db, sql, params)[0] || null; }
+  function dbOne(db, sql, params=[]) {
+    try { return dbRun(db, sql, params)[0] || null; }
+    catch(e) { if (e.isSqlError) throw e; return null; }
+  }
 
   function getStats(db) {
     const statusCounts = {};
     PROSPECT_STATUSES.forEach(s => {
-      const r = dbOne(db, `SELECT COUNT(*) as c FROM prospects WHERE status = ?`, [s]);
-      statusCounts[s] = r?.c || 0;
+      try {
+        const r = dbOne(db, `SELECT COUNT(*) as c FROM prospects WHERE status = ?`, [s]);
+        statusCounts[s] = r?.c || 0;
+      } catch { statusCounts[s] = 0; }
     });
     const total = dbOne(db, `SELECT COUNT(*) as c FROM prospects`)?.c || 0;
     const emailStats = dbOne(db,`SELECT
@@ -234,8 +245,10 @@
     const sentToday = dbOne(db,
       `SELECT COUNT(*) as c FROM email_sends WHERE status='sent' AND DATE(sent_at)=DATE('now')`
     )?.c || 0;
+    const colNames  = dbRun(db, "PRAGMA table_info(prospects)").map(r => r.name);
+    const icpExpr   = colNames.includes('icp') ? "COALESCE(icp,'it_leader')" : "'it_leader'";
     const icpCounts = dbRun(db,
-      `SELECT COALESCE(icp,'it_leader') as icp, COUNT(*) as cnt FROM prospects GROUP BY icp ORDER BY cnt DESC`
+      `SELECT ${icpExpr} as icp, COUNT(*) as cnt FROM prospects GROUP BY ${icpExpr} ORDER BY cnt DESC`
     );
     return { total, ...statusCounts, ...emailStats, sentToday, icpCounts };
   }
@@ -344,23 +357,40 @@
   }
 
   function getProspects(db, page, search, icpF, statusF, angleF='') {
+    // Gracefully handle older DBs that predate column migrations.
+    // angle and icp were added via ALTER TABLE — check before referencing them.
+    const colNames = dbRun(db, "PRAGMA table_info(prospects)").map(r => r.name);
+    const hasAngle = colNames.includes('angle');
+    const hasIcp   = colNames.includes('icp');
+
+    const angleSelect = hasAngle ? "COALESCE(p.angle,'A') as angle" : "'A' as angle";
+    const icpSelect   = hasIcp   ? "COALESCE(p.icp,'it_leader') as icp" : "'it_leader' as icp";
+    const angleWhere  = hasAngle ? "AND (? = '' OR COALESCE(p.angle,'A') = ?)" : "";
+    const icpWhere    = hasIcp   ? "AND (? = '' OR COALESCE(p.icp,'it_leader') = ?)" : "";
+    const angleParams = hasAngle ? [angleF, angleF] : [];
+    const icpParams   = hasIcp   ? [icpF,   icpF  ] : [];
+
     const like = `%${search}%`;
     const w = `WHERE (? = '' OR p.first_name LIKE ? OR p.last_name LIKE ? OR p.company LIKE ? OR p.email LIKE ?)
-      AND (? = '' OR COALESCE(p.icp,'it_leader') = ?)
       AND (? = '' OR p.status = ?)
-      AND (? = '' OR COALESCE(p.angle,'A') = ?)`;
-    const params = [search,like,like,like,like, icpF,icpF, statusF,statusF, angleF,angleF];
-    const cnt = dbOne(db,`SELECT COUNT(DISTINCT p.id) as total FROM prospects p ${w}`, params);
-    const rows = dbRun(db,`SELECT p.id, p.first_name, p.last_name, p.title, p.company, p.email,
-      p.employees, COALESCE(p.icp,'it_leader') as icp, COALESCE(p.angle,'A') as angle,
-      p.status, p.error_msg, p.research_brief, p.email_sequence,
-      COUNT(CASE WHEN es.status='sent' THEN 1 END) as emails_sent,
-      MAX(CASE WHEN es.status='sent' THEN es.sent_at END) as last_sent_at,
-      MIN(CASE WHEN es.status='scheduled' THEN es.scheduled_date END) as next_send
-      FROM prospects p LEFT JOIN email_sends es ON es.prospect_id=p.id
-      ${w} GROUP BY p.id ORDER BY p.id LIMIT ? OFFSET ?`,
-      [...params, PER_PAGE, page*PER_PAGE]);
-    return { total: cnt?.total||0, rows };
+      ${icpWhere} ${angleWhere}`;
+    const params = [search,like,like,like,like, statusF,statusF, ...icpParams, ...angleParams];
+
+    try {
+      const cnt = dbOne(db,`SELECT COUNT(DISTINCT p.id) as total FROM prospects p ${w}`, params);
+      const rows = dbRun(db,`SELECT p.id, p.first_name, p.last_name, p.title, p.company, p.email,
+        p.employees, ${icpSelect}, ${angleSelect},
+        p.status, p.error_msg, p.research_brief, p.email_sequence,
+        COUNT(CASE WHEN es.status='sent' THEN 1 END) as emails_sent,
+        MAX(CASE WHEN es.status='sent' THEN es.sent_at END) as last_sent_at,
+        MIN(CASE WHEN es.status='scheduled' THEN es.scheduled_date END) as next_send
+        FROM prospects p LEFT JOIN email_sends es ON es.prospect_id=p.id
+        ${w} GROUP BY p.id ORDER BY p.id LIMIT ? OFFSET ?`,
+        [...params, PER_PAGE, page*PER_PAGE]);
+      return { total: cnt?.total||0, rows, error: null };
+    } catch(e) {
+      return { total: 0, rows: [], error: e.message };
+    }
   }
 
   // ── Shared Components ─────────────────────────────────────────────────────
@@ -860,8 +890,8 @@
     }, [search]);
     useEffect(()=>setPage(0), [icpF, statusF, angleF]);
 
-    const { total, rows } = useMemo(()=>{
-      if (!db) return { total:0, rows:[] };
+    const { total, rows, error } = useMemo(()=>{
+      if (!db) return { total:0, rows:[], error:null };
       return getProspects(db, page, debSearch, icpF, statusF, angleF);
     }, [db, page, debSearch, icpF, statusF, angleF]);
 
@@ -873,6 +903,13 @@
     return (
       <div className="space-y-5">
         <PageHeader icon="users" title="Prospects" sub={`${fmtNum(total)} contacts`} />
+
+        {error && (
+          <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700 font-medium flex items-center gap-2">
+            <Icon name="alertCircle" size={15} cls="shrink-0 text-red-500" />
+            <span>Query error — {error}</span>
+          </div>
+        )}
 
         {/* Filters */}
         <Card className="p-3">
