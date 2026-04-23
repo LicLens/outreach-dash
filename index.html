@@ -1380,6 +1380,20 @@
         </div>
 
         <div>
+          <SectionLabel>Bulk Reprocess by ICP</SectionLabel>
+          <div className="grid grid-cols-1 gap-4">
+            <WorkflowCard icon="refresh" title="Reprocess Prospects"
+              desc="Reset and re-run research + email generation for a chosen ICP. Use 'emails' mode to keep research and only regenerate sequences (fast). Use 'full' to wipe everything and start from scratch."
+              workflow="reprocess.yml" pat={pat} accentColor="blue"
+              fields={[
+                {name:'icp',   label:'ICP to reprocess', type:'select', default:'all',    options:['all','it_leader','ciso','finops','msp']},
+                {name:'mode',  label:'Mode',              type:'select', default:'emails', options:['emails','full']},
+                {name:'batch', label:'Batch size',        inputType:'number', default:'50', placeholder:'e.g. 50'},
+              ]} />
+          </div>
+        </div>
+
+        <div>
           <SectionLabel>Maintenance</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <WorkflowCard icon="refresh" title="Retry Failed" desc="Retry prospects with failed research or email gen"
