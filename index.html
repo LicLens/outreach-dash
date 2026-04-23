@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>365TUNE Outreach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js"></script>
@@ -11,25 +14,86 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
   <style>
-    * { -webkit-font-smoothing: antialiased; }
-    .slide-drawer { transform: translateX(100%); transition: transform 0.3s cubic-bezier(.4,0,.2,1); }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    .slide-drawer { transform: translateX(100%); transition: transform 0.28s cubic-bezier(.4,0,.2,1); }
     .slide-drawer.open { transform: translateX(0); }
-    .nav-item { border-left: 3px solid transparent; }
-    .nav-item.active { background: rgba(37,99,235,.1); color: #3b82f6; border-left-color: #2563eb; }
+    /* Nav: no left-border; use bg highlight + icon tint */
+    .nav-item { border-radius: 8px; }
+    .nav-item.active { background: rgba(37,99,235,.09); color: #2563eb; }
+    .nav-item.active .ni-icon { color: #2563eb; }
+    .nav-item:not(.active) .ni-icon { color: #64748b; }
     pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; }
-    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
-    .funnel-bar { transition: width 0.5s cubic-bezier(.4,0,.2,1); }
+    ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+    .funnel-bar { transition: width 0.6s cubic-bezier(.4,0,.2,1); }
     .stat-card { transition: box-shadow 0.15s, transform 0.15s; }
-    .stat-card:hover { box-shadow: 0 4px 20px rgba(37,99,235,.1); transform: translateY(-1px); }
-    input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.15); border-color: #2563eb !important; }
+    .stat-card:hover { box-shadow: 0 6px 24px rgba(37,99,235,.08); transform: translateY(-1px); }
+    input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.12); border-color: #3b82f6 !important; }
+    .btn-blue { background:#2563eb; color:#fff; transition:background .15s; }
+    .btn-blue:hover { background:#1d4ed8; }
+    .btn-blue:disabled { opacity:.5; cursor:not-allowed; }
   </style>
 </head>
 <body class="bg-slate-50">
   <div id="root"></div>
   <script type="text/babel">
   const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+  // ── Icon System ───────────────────────────────────────────────────────────
+  // Stroke-based SVG icons (Lucide-style, MIT). Color = currentColor.
+  const _IP = {
+    dashboard:    [<rect key="a" x="3" y="3" width="7" height="7" rx="1"/>, <rect key="b" x="14" y="3" width="7" height="7" rx="1"/>, <rect key="c" x="3" y="14" width="7" height="7" rx="1"/>, <rect key="d" x="14" y="14" width="7" height="7" rx="1"/>],
+    users:        [<path key="a" d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>, <circle key="b" cx="9" cy="7" r="4"/>, <path key="c" d="M23 21v-2a4 4 0 0 0-3-3.87"/>, <path key="d" d="M16 3.13a4 4 0 0 1 0 7.75"/>],
+    zap:          [<polygon key="a" points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>],
+    inbox:        [<polyline key="a" points="22 12 16 12 14 15 10 15 8 12 2 12"/>, <path key="b" d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>],
+    settings:     [<circle key="a" cx="12" cy="12" r="3"/>, <path key="b" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>],
+    download:     [<path key="a" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>, <polyline key="b" points="7 10 12 15 17 10"/>, <line key="c" x1="12" y1="15" x2="12" y2="3"/>],
+    refresh:      [<polyline key="a" points="23 4 23 10 17 10"/>, <polyline key="b" points="1 20 1 14 7 14"/>, <path key="c" d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>],
+    logout:       [<path key="a" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>, <polyline key="b" points="16 17 21 12 16 7"/>, <line key="c" x1="21" y1="12" x2="9" y2="12"/>],
+    x:            [<line key="a" x1="18" y1="6" x2="6" y2="18"/>, <line key="b" x1="6" y1="6" x2="18" y2="18"/>],
+    search:       [<circle key="a" cx="11" cy="11" r="8"/>, <line key="b" x1="21" y1="21" x2="16.65" y2="16.65"/>],
+    play:         [<polygon key="a" points="5 3 19 12 5 21 5 3"/>],
+    check:        [<polyline key="a" points="20 6 9 17 4 12"/>],
+    checkCircle:  [<path key="a" d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>, <polyline key="b" points="22 4 12 14.01 9 11.01"/>],
+    warn:         [<path key="a" d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>, <line key="b" x1="12" y1="9" x2="12" y2="13"/>, <line key="c" x1="12" y1="17" x2="12.01" y2="17"/>],
+    message:      [<path key="a" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>],
+    send:         [<line key="a" x1="22" y1="2" x2="11" y2="13"/>, <polygon key="b" points="22 2 15 22 11 13 2 9 22 2"/>],
+    mail:         [<path key="a" d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>, <polyline key="b" points="22,6 12,13 2,6"/>],
+    building:     [<path key="a" d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>, <polyline key="b" points="9 22 9 12 15 12 15 22"/>],
+    chevronDown:  [<polyline key="a" points="6 9 12 15 18 9"/>],
+    chevronUp:    [<polyline key="a" points="18 15 12 9 6 15"/>],
+    chevronLeft:  [<polyline key="a" points="15 18 9 12 15 6"/>],
+    chevronRight: [<polyline key="a" points="9 18 15 12 9 6"/>],
+    chevronsLeft: [<polyline key="a" points="11 17 6 12 11 7"/>, <polyline key="b" points="18 17 13 12 18 7"/>],
+    chevronsRight:[<polyline key="a" points="13 17 18 12 13 7"/>, <polyline key="b" points="6 17 11 12 6 7"/>],
+    trash:        [<polyline key="a" points="3 6 5 6 21 6"/>, <path key="b" d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>],
+    plus:         [<line key="a" x1="12" y1="5" x2="12" y2="19"/>, <line key="b" x1="5" y1="12" x2="19" y2="12"/>],
+    lock:         [<rect key="a" x="3" y="11" width="18" height="11" rx="2" ry="2"/>, <path key="b" d="M7 11V7a5 5 0 0 1 10 0v4"/>],
+    database:     [<ellipse key="a" cx="12" cy="5" rx="9" ry="3"/>, <path key="b" d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>, <path key="c" d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>],
+    github:       [<path key="a" d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>],
+    link:         [<path key="a" d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>, <polyline key="b" points="15 3 21 3 21 9"/>, <line key="c" x1="10" y1="14" x2="21" y2="3"/>],
+    clock:        [<circle key="a" cx="12" cy="12" r="10"/>, <polyline key="b" points="12 6 12 12 16 14"/>],
+    activity:     [<polyline key="a" points="22 12 18 12 15 21 9 3 6 12 2 12"/>],
+    filter:       [<polygon key="a" points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>],
+    briefcase:    [<rect key="a" x="2" y="7" width="20" height="14" rx="2" ry="2"/>, <path key="b" d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>],
+    layers:       [<polygon key="a" points="12 2 2 7 12 12 22 7 12 2"/>, <polyline key="b" points="2 17 12 22 22 17"/>, <polyline key="c" points="2 12 12 17 22 12"/>],
+    cpu:          [<rect key="a" x="4" y="4" width="16" height="16" rx="2"/>, <rect key="b" x="9" y="9" width="6" height="6"/>, <line key="c" x1="9" y1="1" x2="9" y2="4"/>, <line key="d" x1="15" y1="1" x2="15" y2="4"/>, <line key="e" x1="9" y1="20" x2="9" y2="23"/>, <line key="f" x1="15" y1="20" x2="15" y2="23"/>, <line key="g" x1="20" y1="9" x2="23" y2="9"/>, <line key="h" x1="20" y1="14" x2="23" y2="14"/>, <line key="i" x1="1" y1="9" x2="4" y2="9"/>, <line key="j" x1="1" y1="14" x2="4" y2="14"/>],
+    trendUp:      [<polyline key="a" points="23 6 13.5 15.5 8.5 10.5 1 18"/>, <polyline key="b" points="17 6 23 6 23 12"/>],
+    alertCircle:  [<circle key="a" cx="12" cy="12" r="10"/>, <line key="b" x1="12" y1="8" x2="12" y2="12"/>, <line key="c" x1="12" y1="16" x2="12.01" y2="16"/>],
+  };
+  function Icon({ name, size=16, cls='' }) {
+    const paths = _IP[name];
+    if (!paths) return null;
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+        className={cls} aria-hidden="true">{paths}</svg>
+    );
+  }
 
   // ── Constants ─────────────────────────────────────────────────────────────
   const OWNER = 'LicLens';
@@ -224,6 +288,61 @@
     `);
   }
 
+  // ── Inbox data queries ────────────────────────────────────────────────────
+  function getRepliedProspects(db) {
+    return dbRun(db, `
+      SELECT p.id, p.first_name, p.last_name, p.title, p.company, p.email,
+             COALESCE(p.icp,'it_leader') as icp,
+             COALESCE(p.angle,'A') as angle,
+             p.error_msg, p.updated_at, p.email_sequence,
+             COUNT(CASE WHEN es.status='sent' THEN 1 END) as emails_sent,
+             MAX(CASE WHEN es.status='sent' THEN es.sent_at END) as last_sent_at,
+             MAX(CASE WHEN es.status='sent' THEN es.email_number END) as last_email_num
+      FROM prospects p
+      LEFT JOIN email_sends es ON es.prospect_id = p.id
+      WHERE p.status = 'replied'
+      GROUP BY p.id
+      ORDER BY p.updated_at DESC
+    `);
+  }
+
+  function getSentItems(db, page, search='', icpF='') {
+    const like = `%${search}%`;
+    const w = `WHERE es.status = 'sent'
+      AND (? = '' OR p.first_name LIKE ? OR p.last_name LIKE ? OR p.company LIKE ? OR p.email LIKE ?)
+      AND (? = '' OR COALESCE(p.icp,'it_leader') = ?)`;
+    const params = [search,like,like,like,like, icpF,icpF];
+    const cnt = dbOne(db,
+      `SELECT COUNT(*) as total FROM email_sends es
+       JOIN prospects p ON p.id=es.prospect_id ${w}`, params);
+    const rows = dbRun(db,
+      `SELECT es.id, es.email_number, es.sent_at, es.scheduled_date, es.graph_message_id,
+              p.id as prospect_id, p.first_name, p.last_name, p.company,
+              p.email as prospect_email,
+              COALESCE(p.icp,'it_leader') as icp, p.email_sequence
+       FROM email_sends es
+       JOIN prospects p ON p.id = es.prospect_id
+       ${w}
+       ORDER BY es.sent_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, PER_PAGE, page*PER_PAGE]);
+    return { total: cnt?.total||0, rows };
+  }
+
+  function subjectFromSequence(emailSequence, emailNumber) {
+    try {
+      const seq = JSON.parse(emailSequence);
+      const em = seq[(emailNumber||1) - 1];
+      return em?.subject || '—';
+    } catch { return '—'; }
+  }
+
+  function getInboxCounts(db) {
+    const replied = dbOne(db, `SELECT COUNT(*) as c FROM prospects WHERE status='replied'`)?.c || 0;
+    const sent    = dbOne(db, `SELECT COUNT(*) as c FROM email_sends WHERE status='sent'`)?.c || 0;
+    return { replied, sent };
+  }
+
   function getProspects(db, page, search, icpF, statusF, angleF='') {
     const like = `%${search}%`;
     const w = `WHERE (? = '' OR p.first_name LIKE ? OR p.last_name LIKE ? OR p.company LIKE ? OR p.email LIKE ?)
@@ -246,22 +365,38 @@
 
   // ── Shared Components ─────────────────────────────────────────────────────
   function Badge({ label, cls }) {
-    return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold tracking-tight ${cls}`}>{label}</span>;
   }
+  // icon = Icon `name` string; fallback is a simple SVG circle placeholder
   function EmptyState({ icon, title, sub }) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-        <div className="text-5xl mb-3 opacity-60">{icon}</div>
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+          <Icon name={icon} size={22} cls="text-gray-400" />
+        </div>
         <div className="text-sm font-semibold text-gray-500">{title}</div>
-        {sub && <div className="text-xs mt-1 text-gray-400">{sub}</div>}
+        {sub && <div className="text-xs mt-1 text-gray-400 text-center max-w-xs">{sub}</div>}
       </div>
     );
   }
   function SectionLabel({ children }) {
-    return <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{children}</p>;
+    return <p className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.08em] mb-3 px-1">{children}</p>;
   }
   function Card({ children, className='' }) {
     return <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm ${className}`}>{children}</div>;
+  }
+  function PageHeader({ icon, title, sub }) {
+    return (
+      <div className="flex items-center gap-3 mb-7">
+        <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+          <Icon name={icon} size={18} cls="text-blue-600" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 leading-tight">{title}</h1>
+          {sub && <p className="text-sm text-gray-400 mt-0.5">{sub}</p>}
+        </div>
+      </div>
+    );
   }
 
   // ── Login ─────────────────────────────────────────────────────────────────
@@ -280,15 +415,18 @@
     }
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-full max-w-sm">
+          {/* Brand */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 mb-4">
-              <span className="text-white text-xl font-bold">3</span>
+            <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-blue-600 mb-4 shadow-lg shadow-blue-200">
+              <span className="text-white text-lg font-bold tracking-tight">365</span>
             </div>
-            <div className="text-2xl font-bold text-gray-900 tracking-tight">365TUNE</div>
-            <div className="text-sm text-gray-400 mt-1">Outreach Dashboard</div>
+            <div className="text-2xl font-bold text-gray-900">365TUNE Outreach</div>
+            <div className="text-sm text-gray-500 mt-1">Campaign Dashboard</div>
           </div>
+          {/* Card */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-7">
           <form onSubmit={handle} className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1.5 uppercase tracking-wide">
@@ -298,58 +436,82 @@
                 className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
                 placeholder={hasPass ? 'Enter password' : 'Min 6 characters'} autoFocus />
             </div>
-            {err && <p className="text-red-500 text-xs font-medium">{err}</p>}
+            {err && (
+              <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-xs font-medium">
+                <Icon name="alertCircle" size={14} cls="shrink-0" />{err}
+              </div>
+            )}
             <button type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">
-              {hasPass ? 'Sign In →' : 'Get Started →'}
+              className="w-full btn-blue font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2">
+              {hasPass ? 'Sign in' : 'Get started'}
+              <Icon name="chevronRight" size={14} />
             </button>
           </form>
+          </div>
         </div>
       </div>
     );
   }
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
+  const NAV_ITEMS = [
+    { id:'dashboard', icon:'dashboard', label:'Dashboard' },
+    { id:'prospects', icon:'users',     label:'Prospects' },
+    { id:'tasks',     icon:'zap',       label:'Tasks'     },
+    { id:'inbox',     icon:'inbox',     label:'Inbox'     },
+    { id:'settings',  icon:'settings',  label:'Settings'  },
+  ];
   function NavItem({ icon, label, active, onClick }) {
     return (
       <button onClick={onClick}
-        className={`nav-item flex items-center gap-3 w-full px-4 py-2.5 text-sm font-medium transition-all text-left mb-0.5 ${
-          active ? 'active' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+        className={`nav-item flex items-center gap-3 w-full px-3 py-2.5 text-sm font-medium transition-colors text-left mb-0.5 ${
+          active ? 'active text-blue-600' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
         }`}>
-        <span className="text-base leading-none">{icon}</span>
-        <span>{label}</span>
+        <span className="ni-icon shrink-0"><Icon name={icon} size={16} /></span>
+        <span className="leading-none">{label}</span>
       </button>
     );
   }
   function Sidebar({ page, setPage, dbLoaded, onLoad, loading, onLogout }) {
     return (
-      <div className="w-56 min-h-screen bg-slate-900 flex flex-col shrink-0 border-r border-slate-800">
-        <div className="px-5 py-5 border-b border-slate-800">
+      <div className="w-56 min-h-screen bg-[#0f172a] flex flex-col shrink-0 border-r border-slate-800/70">
+        {/* Brand */}
+        <div className="px-4 py-4 border-b border-slate-800/70">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-              <span className="text-white text-xs font-bold">365</span>
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0 shadow shadow-blue-900/50">
+              <span className="text-white text-[11px] font-bold tracking-tight">365</span>
             </div>
             <div>
               <div className="text-sm font-bold text-white tracking-tight leading-none">365TUNE</div>
-              <div className="text-xs text-slate-500 mt-0.5">Outreach</div>
+              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">Outreach</div>
             </div>
           </div>
         </div>
-        <nav className="flex-1 py-3 pr-2">
-          <NavItem icon="📊" label="Dashboard"  active={page==='dashboard'} onClick={()=>setPage('dashboard')} />
-          <NavItem icon="👥" label="Prospects"  active={page==='prospects'} onClick={()=>setPage('prospects')} />
-          <NavItem icon="⚡" label="Tasks"      active={page==='tasks'}     onClick={()=>setPage('tasks')} />
-          <NavItem icon="⚙️" label="Settings"  active={page==='settings'}  onClick={()=>setPage('settings')} />
+        {/* Nav */}
+        <nav className="flex-1 px-2 py-3 space-y-0.5">
+          {NAV_ITEMS.map(n => (
+            <NavItem key={n.id} icon={n.icon} label={n.label}
+              active={page===n.id} onClick={()=>setPage(n.id)} />
+          ))}
         </nav>
-        <div className="p-3 border-t border-slate-800 space-y-2">
+        {/* Footer */}
+        <div className="px-2 pb-4 space-y-1.5">
+          {dbLoaded && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-emerald-400 font-semibold">
+              <Icon name="checkCircle" size={12} /><span>Data loaded</span>
+            </div>
+          )}
           <button onClick={onLoad} disabled={loading}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-colors
-              ${loading ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
-            {loading ? '⏳ Loading…' : dbLoaded ? '🔄 Refresh Data' : '📥 Load Data'}
+            className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              loading ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white'
+            }`}>
+            <Icon name={loading ? 'clock' : dbLoaded ? 'refresh' : 'download'} size={13} />
+            {loading ? 'Loading…' : dbLoaded ? 'Refresh' : 'Load Data'}
           </button>
-          {dbLoaded && <p className="text-center text-xs text-emerald-400 font-medium">✓ Data loaded</p>}
-          <button onClick={onLogout} className="w-full text-xs text-slate-600 hover:text-slate-400 transition py-1">
-            Sign out
+          <button onClick={onLogout}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-300 hover:bg-slate-800 transition-colors">
+            <Icon name="logout" size={13} />Sign out
           </button>
         </div>
       </div>
@@ -357,23 +519,29 @@
   }
 
   // ── Dashboard Components ──────────────────────────────────────────────────
-  const STAT_ACCENT = {
-    blue:    'border-t-blue-500',
-    green:   'border-t-green-500',
-    orange:  'border-t-orange-400',
-    red:     'border-t-red-500',
-    purple:  'border-t-purple-500',
-    emerald: 'border-t-emerald-500',
-    gray:    'border-t-gray-300',
-    yellow:  'border-t-yellow-400',
-    indigo:  'border-t-indigo-500',
+  const STAT_META = {
+    blue:    { border:'border-t-blue-500',    icon:'bg-blue-50 text-blue-500'    },
+    green:   { border:'border-t-green-500',   icon:'bg-green-50 text-green-500'  },
+    orange:  { border:'border-t-orange-400',  icon:'bg-orange-50 text-orange-500'},
+    red:     { border:'border-t-red-500',     icon:'bg-red-50 text-red-500'      },
+    purple:  { border:'border-t-purple-500',  icon:'bg-purple-50 text-purple-500'},
+    emerald: { border:'border-t-emerald-500', icon:'bg-emerald-50 text-emerald-500'},
+    gray:    { border:'border-t-slate-300',   icon:'bg-slate-50 text-slate-400'  },
+    yellow:  { border:'border-t-yellow-400',  icon:'bg-yellow-50 text-yellow-500'},
+    indigo:  { border:'border-t-indigo-500',  icon:'bg-indigo-50 text-indigo-500'},
   };
-  function StatCard({ label, value, color='blue', sub='' }) {
+  function StatCard({ label, value, color='blue', sub='', icon='' }) {
+    const m = STAT_META[color] || STAT_META.blue;
     return (
-      <div className={`stat-card bg-white rounded-2xl border border-gray-100 border-t-4 p-4 ${STAT_ACCENT[color]||STAT_ACCENT.blue}`}>
-        <div className="text-3xl font-bold text-gray-900 tabular-nums leading-none">{fmtNum(value)}</div>
-        <div className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-wide">{label}</div>
-        {sub && <div className="text-xs text-blue-600 font-semibold mt-1">{sub}</div>}
+      <div className={`stat-card bg-white rounded-2xl border border-gray-100 border-t-4 p-4 ${m.border}`}>
+        {icon && (
+          <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg mb-2.5 ${m.icon}`}>
+            <Icon name={icon} size={15} />
+          </div>
+        )}
+        <div className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{fmtNum(value)}</div>
+        <div className="text-[11px] font-semibold text-gray-400 mt-1.5 uppercase tracking-wide">{label}</div>
+        {sub && <div className="text-[11px] text-blue-600 font-semibold mt-1">{sub}</div>}
       </div>
     );
   }
@@ -469,7 +637,7 @@
   }
 
   function DashboardPage({ db }) {
-    if (!db) return <EmptyState icon="📥" title="No data loaded" sub='Click "Load Data" in the sidebar' />;
+    if (!db) return <EmptyState icon="database" title="No data loaded" sub='Click "Load Data" in the sidebar to fetch the campaign database' />;
     const stats  = useMemo(()=>getStats(db),[db]);
     const funnel = useMemo(()=>getIcpFunnel(db),[db]);
     const daily  = useMemo(()=>getDailySends(db),[db]);
@@ -478,26 +646,21 @@
     const replyRate = stats.sent > 0 ? ((stats.replied||0) / stats.total * 100).toFixed(1) : '0.0';
 
     return (
-      <div className="space-y-7">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Pipeline overview &amp; send activity</p>
-          </div>
-        </div>
+      <div className="space-y-6">
+        <PageHeader icon="dashboard" title="Dashboard" sub="Pipeline overview & send activity" />
 
         {/* Prospect pipeline */}
         <div>
           <SectionLabel>Prospect Pipeline</SectionLabel>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-            <StatCard label="Total"        value={stats.total}        color="blue" />
-            <StatCard label="Pending"      value={stats.pending}      color="gray" />
-            <StatCard label="Researched"   value={stats.researched}   color="yellow" />
-            <StatCard label="Ready"        value={stats.emails_ready} color="indigo" />
-            <StatCard label="Active"       value={stats.active}       color="purple" />
-            <StatCard label="Completed"    value={stats.completed}    color="green" />
-            <StatCard label="Replied"      value={stats.replied}      color="emerald" sub={`${replyRate}% rate`} />
-            <StatCard label="Errors"       value={stats.error}        color="red" />
+            <StatCard label="Total"      value={stats.total}        color="blue"    icon="users"    />
+            <StatCard label="Pending"    value={stats.pending}      color="gray"    icon="clock"    />
+            <StatCard label="Researched" value={stats.researched}   color="yellow"  icon="search"   />
+            <StatCard label="Ready"      value={stats.emails_ready} color="indigo"  icon="mail"     />
+            <StatCard label="Active"     value={stats.active}       color="purple"  icon="activity" />
+            <StatCard label="Completed"  value={stats.completed}    color="green"   icon="check"    />
+            <StatCard label="Replied"    value={stats.replied}      color="emerald" icon="message"  sub={`${replyRate}% rate`} />
+            <StatCard label="Errors"     value={stats.error}        color="red"     icon="alertCircle" />
           </div>
         </div>
 
@@ -505,21 +668,21 @@
         <div>
           <SectionLabel>Email Sends</SectionLabel>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Total Sent"    value={stats.sent}      color="green" />
-            <StatCard label="Sent Today"    value={stats.sentToday} color="blue" />
-            <StatCard label="Scheduled"     value={stats.scheduled} color="orange" />
-            <StatCard label="Failed"        value={stats.failed}    color="red" />
+            <StatCard label="Total Sent"  value={stats.sent}      color="green"  icon="send"     />
+            <StatCard label="Sent Today"  value={stats.sentToday} color="blue"   icon="trendUp"  />
+            <StatCard label="Scheduled"   value={stats.scheduled} color="orange" icon="clock"    />
+            <StatCard label="Failed"      value={stats.failed}    color="red"    icon="alertCircle" />
           </div>
         </div>
 
         {/* ICP funnel + chart */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
           <Card className="xl:col-span-3 p-6">
-            <h2 className="text-sm font-bold text-gray-700 mb-5">Pipeline by ICP</h2>
+            <h2 className="text-sm font-semibold text-gray-700 mb-5">Pipeline by ICP</h2>
             <IcpFunnelTable funnel={funnel} />
           </Card>
           <Card className="xl:col-span-2 p-6">
-            <h2 className="text-sm font-bold text-gray-700 mb-5">Daily Sends — last 30 days</h2>
+            <h2 className="text-sm font-semibold text-gray-700 mb-5">Daily Sends — last 30 days</h2>
             <StackedBarChart data={daily} />
           </Card>
         </div>
@@ -527,7 +690,7 @@
         {/* A/B/C angle breakdown */}
         {angles?.length > 0 && (
           <Card className="p-6">
-            <h2 className="text-sm font-bold text-gray-700 mb-5">A/B/C Angle Split</h2>
+            <h2 className="text-sm font-semibold text-gray-700 mb-5">A/B/C Angle Split</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -591,7 +754,7 @@
               {email.day != null && <div className="text-xs text-gray-400">Day {email.day}</div>}
             </div>
           </div>
-          <span className="text-gray-400 ml-2 shrink-0 text-xs">{open ? '▲' : '▼'}</span>
+          <Icon name={open ? 'chevronUp' : 'chevronDown'} size={14} cls="text-gray-400 ml-2 shrink-0" />
         </button>
         {open && (
           <div className="px-4 py-4 space-y-3 bg-white">
@@ -638,12 +801,12 @@
                       {prospect.employees > 0 && <Badge label={`${fmtNum(prospect.employees)} employees`} cls="bg-gray-100 text-gray-600" />}
                     </div>
                   </div>
-                  <button onClick={onClose} className="text-gray-300 hover:text-gray-600 transition-colors ml-4 shrink-0 p-1">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  <button onClick={onClose} className="text-gray-300 hover:text-gray-600 transition-colors ml-4 shrink-0 p-1.5 rounded-lg hover:bg-gray-100">
+                    <Icon name="x" size={16} />
                   </button>
                 </div>
                 {prospect.email && <div className="text-xs text-gray-400 mt-3 font-medium">{prospect.email}</div>}
-                {prospect.next_send && <div className="text-xs text-blue-500 font-semibold mt-1">⏰ Next send: {prospect.next_send}</div>}
+                {prospect.next_send && <div className="text-xs text-blue-500 font-semibold mt-1 flex items-center gap-1"><Icon name="clock" size={12} cls="shrink-0" />Next send: {prospect.next_send}</div>}
                 {prospect.last_sent_at && <div className="text-xs text-gray-400 mt-0.5">Last sent: {fmtDate(prospect.last_sent_at)}</div>}
                 {prospect.error_msg && (
                   <div className="mt-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-xs text-red-700 break-words">{prospect.error_msg}</div>
@@ -652,7 +815,7 @@
             </div>
             {/* Tabs */}
             <div className="flex border-b border-gray-100 px-6 bg-gray-50/50">
-              {[['brief','📋 AI Brief'],['emails',`✉️ Emails (${seq.length})`]].map(([t,l]) => (
+              {[['brief','Brief'],['emails',`Emails (${seq.length})`]].map(([t,l]) => (
                 <button key={t} onClick={()=>setTab(t)}
                   className={`py-3.5 px-4 text-sm font-semibold border-b-2 transition-all ${
                     tab===t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -665,12 +828,12 @@
               {tab==='brief' && (
                 prospect.research_brief
                   ? <pre className="text-sm text-gray-700 leading-relaxed bg-slate-50 rounded-xl p-5 border border-gray-100">{prospect.research_brief}</pre>
-                  : <EmptyState icon="📋" title="No research brief yet" />
+                  : <EmptyState icon="briefcase" title="No research brief yet" />
               )}
               {tab==='emails' && (
                 <div className="space-y-2.5">
                   {seq.length===0
-                    ? <EmptyState icon="✉️" title="No email sequence yet" />
+                    ? <EmptyState icon="mail" title="No email sequence yet" />
                     : seq.map((em,i) => <EmailCard key={i} email={em} num={i+1} />)}
                 </div>
               )}
@@ -703,25 +866,23 @@
     }, [db, page, debSearch, icpF, statusF, angleF]);
 
     const totalPages = Math.ceil(total/PER_PAGE);
-    if (!db) return <EmptyState icon="👥" title="Load DB to view prospects" />;
+    if (!db) return <EmptyState icon="users" title="Load DB to view prospects" />;
 
     const filterCls = "border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-gray-700 focus:border-blue-500";
 
     return (
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Prospects</h1>
-            <p className="text-sm text-gray-400 mt-0.5">{fmtNum(total)} total</p>
-          </div>
-        </div>
+        <PageHeader icon="users" title="Prospects" sub={`${fmtNum(total)} contacts`} />
 
         {/* Filters */}
         <Card className="p-3">
           <div className="flex flex-wrap gap-2 items-center">
-            <input value={search} onChange={e=>setSearch(e.target.value)}
-              placeholder="🔍  Search name, company, email…"
-              className={`${filterCls} w-72`} />
+            <div className="relative">
+              <Icon name="search" size={14} cls="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input value={search} onChange={e=>setSearch(e.target.value)}
+                placeholder="Search name, company, email…"
+                className={`${filterCls} w-72 pl-9`} />
+            </div>
             <select value={icpF} onChange={e=>setIcpF(e.target.value)} className={filterCls}>
               <option value="">All ICPs</option>
               {Object.entries(ICP_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
@@ -740,8 +901,8 @@
             </select>
             {(search||icpF||statusF||angleF) && (
               <button onClick={()=>{ setSearch(''); setIcpF(''); setStatusF(''); setAngleF(''); }}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded-lg hover:bg-blue-50">
-                ✕ Clear
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded-lg hover:bg-blue-50 inline-flex items-center gap-1">
+                <Icon name="x" size={12} /><span>Clear</span>
               </button>
             )}
           </div>
@@ -802,20 +963,250 @@
                 {page*PER_PAGE+1}–{Math.min((page+1)*PER_PAGE,total)} of {fmtNum(total)}
               </span>
               <div className="flex gap-1">
-                {[['«',0],['‹',Math.max(0,page-1)]].map(([l,pg])=>(
-                  <button key={l} onClick={()=>setPage(pg)} disabled={page===0}
-                    className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-white hover:border-blue-300 transition">{l}</button>
+                {[['chevronsLeft',0],['chevronLeft',Math.max(0,page-1)]].map(([ic,pg])=>(
+                  <button key={ic} onClick={()=>setPage(pg)} disabled={page===0}
+                    className="p-1.5 rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-white hover:border-blue-300 transition text-gray-500"><Icon name={ic} size={13} /></button>
                 ))}
                 <span className="px-3 py-1 text-xs text-gray-500 font-medium">Page {page+1} / {totalPages}</span>
-                {[['›',Math.min(totalPages-1,page+1)],['»',totalPages-1]].map(([l,pg])=>(
-                  <button key={l} onClick={()=>setPage(pg)} disabled={page>=totalPages-1}
-                    className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-white hover:border-blue-300 transition">{l}</button>
+                {[['chevronRight',Math.min(totalPages-1,page+1)],['chevronsRight',totalPages-1]].map(([ic,pg])=>(
+                  <button key={ic} onClick={()=>setPage(pg)} disabled={page>=totalPages-1}
+                    className="p-1.5 rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-white hover:border-blue-300 transition text-gray-500"><Icon name={ic} size={13} /></button>
                 ))}
               </div>
             </div>
           )}
         </Card>
         <ProspectDrawer prospect={selected} onClose={()=>setSelected(null)} />
+      </div>
+    );
+  }
+
+  // ── Inbox ─────────────────────────────────────────────────────────────────
+  function ReplyCard({ r }) {
+    const [open, setOpen] = useState(false);
+    let lastSubject = '—';
+    try {
+      const seq = JSON.parse(r.email_sequence || '[]');
+      const last = seq[(r.last_email_num||1) - 1];
+      lastSubject = last?.subject || '—';
+    } catch {}
+    // Strip "Stopped: " prefix from error_msg for display
+    const stopReason = (r.error_msg||'').replace(/^Stopped:\s*/i,'');
+
+    return (
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        {/* Emerald reply indicator strip */}
+        <div className="h-1 bg-gradient-to-r from-emerald-400 to-teal-500" />
+        <div className="p-5">
+          <div className="flex items-start gap-4">
+            {/* Avatar */}
+            <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+              <span className="text-emerald-700 font-bold text-sm">
+                {(r.first_name||'?')[0]}{(r.last_name||'?')[0]}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="font-semibold text-gray-900">{r.first_name} {r.last_name}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {r.title}{r.company ? ` · ${r.company}` : ''}
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400 shrink-0 text-right">
+                  {fmtDate(r.updated_at)}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                <Badge label={ICP_LABELS[r.icp]||r.icp} cls={ICP_COLORS[r.icp]||'bg-gray-100 text-gray-700'} />
+                <Badge label={`Angle ${r.angle}`} cls={ANGLE_COLORS[r.angle]||'bg-gray-100 text-gray-700'} />
+                <Badge label={`${r.emails_sent||0}/5 emails sent`} cls="bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200" />
+              </div>
+              {/* Last email sent */}
+              <div className="mt-3 bg-gray-50 rounded-xl px-4 py-3 text-xs space-y-1">
+                <div className="flex items-center gap-2 text-gray-500">
+                  <span className="font-semibold text-gray-600">Last sent:</span>
+                  <span>Email {r.last_email_num||1}/5 · {fmtDate(r.last_sent_at)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-500 min-w-0">
+                  <span className="font-semibold text-gray-600 shrink-0">Subject:</span>
+                  <span className="truncate">{lastSubject}</span>
+                </div>
+                {stopReason && stopReason !== 'replied' && (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <span className="font-semibold text-gray-600">Note:</span>
+                    <span>{stopReason}</span>
+                  </div>
+                )}
+              </div>
+              {/* Reply notice */}
+              <div className="mt-3 flex items-start gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5">
+                <Icon name="message" size={14} cls="shrink-0 mt-0.5 text-emerald-600" />
+                <span>Reply detected — sequence stopped. View the full reply in your <strong>M365 inbox</strong>.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function InboxPage({ db }) {
+    const [tab, setTab] = useState('replied');
+    const [sentPage, setSentPage] = useState(0);
+    const [sentSearch, setSentSearch] = useState('');
+    const [sentIcp, setSentIcp] = useState('');
+    const [debSentSearch, setDebSentSearch] = useState('');
+
+    useEffect(() => {
+      const t = setTimeout(()=>{ setDebSentSearch(sentSearch); setSentPage(0); }, 300);
+      return ()=>clearTimeout(t);
+    }, [sentSearch]);
+    useEffect(()=>setSentPage(0), [sentIcp]);
+
+    const replied = useMemo(()=> db ? getRepliedProspects(db) : [], [db]);
+    const { total: sentTotal, rows: sentRows } = useMemo(()=>
+      db ? getSentItems(db, sentPage, debSentSearch, sentIcp) : { total:0, rows:[] },
+      [db, sentPage, debSentSearch, sentIcp]
+    );
+    const counts = useMemo(()=> db ? getInboxCounts(db) : { replied:0, sent:0 }, [db]);
+    const sentTotalPages = Math.ceil(sentTotal/PER_PAGE);
+
+    if (!db) return <EmptyState icon="inbox" title="Load DB to view inbox" />;
+
+    const filterCls = "border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-gray-700 focus:border-blue-500";
+
+    const tabs = [
+      { id:'replied', label:`Replied`, count: counts.replied, icon:'message' },
+      { id:'sent',    label:`Sent Items`, count: counts.sent,    icon:'send' },
+    ];
+
+    return (
+      <div className="space-y-5">
+        <PageHeader icon="inbox" title="Inbox" sub="Replies detected &amp; full send history" />
+
+        {/* Tabs */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                tab===t.id
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}>
+              <Icon name={t.icon} size={14} />
+              <span>{t.label}</span>
+              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                tab===t.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'
+              }`}>{fmtNum(t.count)}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* ── Replied tab ── */}
+        {tab==='replied' && (
+          replied.length === 0
+            ? <EmptyState icon="message" title="No replies yet" sub="When a prospect replies, their sequence is automatically stopped and shown here" />
+            : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {replied.map(r => <ReplyCard key={r.id} r={r} />)}
+              </div>
+            )
+        )}
+
+        {/* ── Sent Items tab ── */}
+        {tab==='sent' && (
+          <div className="space-y-4">
+            {/* Filters */}
+            <Card className="p-3">
+              <div className="flex flex-wrap gap-2 items-center">
+                <div className="relative">
+                  <Icon name="search" size={14} cls="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input value={sentSearch} onChange={e=>setSentSearch(e.target.value)}
+                    placeholder="Search name, company, email…"
+                    className={`${filterCls} w-72 pl-9`} />
+                </div>
+                <select value={sentIcp} onChange={e=>setSentIcp(e.target.value)} className={filterCls}>
+                  <option value="">All ICPs</option>
+                  {Object.entries(ICP_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+                </select>
+                {(sentSearch||sentIcp) && (
+                  <button onClick={()=>{ setSentSearch(''); setSentIcp(''); }}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded-lg hover:bg-blue-50 inline-flex items-center gap-1">
+                    <Icon name="x" size={12} /><span>Clear</span>
+                  </button>
+                )}
+              </div>
+            </Card>
+
+            {/* Sent table */}
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50/80 text-left text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                      <th className="px-5 py-3.5">Sent At</th>
+                      <th className="px-4 py-3.5">To</th>
+                      <th className="px-4 py-3.5">Company</th>
+                      <th className="px-4 py-3.5">ICP</th>
+                      <th className="px-4 py-3.5 text-center">#</th>
+                      <th className="px-4 py-3.5">Subject</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sentRows.map(r => {
+                      const subj = subjectFromSequence(r.email_sequence, r.email_number);
+                      // Follow-up emails are sent as Re: <original>
+                      const displaySubj = r.email_number > 1 ? `Re: ${subjectFromSequence(r.email_sequence, 1)}` : subj;
+                      return (
+                        <tr key={r.id} className="border-t border-gray-50 hover:bg-blue-50/30 transition-colors">
+                          <td className="px-5 py-3.5 text-xs text-gray-500 font-medium whitespace-nowrap">
+                            {r.sent_at ? new Date(r.sent_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—'}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-gray-800 text-sm">{r.first_name} {r.last_name}</div>
+                            <div className="text-xs text-gray-400">{r.prospect_email}</div>
+                          </td>
+                          <td className="px-4 py-3.5 text-gray-600 font-medium text-sm">{r.company||'—'}</td>
+                          <td className="px-4 py-3.5">
+                            <Badge label={ICP_LABELS[r.icp]||r.icp} cls={ICP_COLORS[r.icp]||'bg-gray-100 text-gray-700'} />
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                              {r.email_number}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-gray-700 max-w-xs truncate text-sm">{displaySubj}</td>
+                        </tr>
+                      );
+                    })}
+                    {sentRows.length===0 && (
+                      <tr><td colSpan="6" className="px-5 py-12 text-center text-gray-400 text-sm">No sent emails match your filters</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {sentTotalPages > 1 && (
+                <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50/50">
+                  <span className="text-xs text-gray-400 font-medium">
+                    {sentPage*PER_PAGE+1}–{Math.min((sentPage+1)*PER_PAGE,sentTotal)} of {fmtNum(sentTotal)}
+                  </span>
+                  <div className="flex gap-1">
+                    {[['chevronsLeft',0],['chevronLeft',Math.max(0,sentPage-1)]].map(([ic,pg])=>(
+                      <button key={ic} onClick={()=>setSentPage(pg)} disabled={sentPage===0}
+                        className="p-1.5 rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-white hover:border-blue-300 transition text-gray-500"><Icon name={ic} size={13} /></button>
+                    ))}
+                    <span className="px-3 py-1 text-xs text-gray-500 font-medium">Page {sentPage+1} / {sentTotalPages}</span>
+                    {[['chevronRight',Math.min(sentTotalPages-1,sentPage+1)],['chevronsRight',sentTotalPages-1]].map(([ic,pg])=>(
+                      <button key={ic} onClick={()=>setSentPage(pg)} disabled={sentPage>=sentTotalPages-1}
+                        className="p-1.5 rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-white hover:border-blue-300 transition text-gray-500"><Icon name={ic} size={13} /></button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
       </div>
     );
   }
@@ -835,28 +1226,39 @@
     useEffect(()=>{ loadRuns(); },[loadRuns]);
 
     async function run() {
-      if (!pat) { setMsg('❌ Add GitHub PAT in Settings'); return; }
+      if (!pat) { setMsg('no-pat'); return; }
       setLoading(true); setMsg('');
       try {
         await triggerWorkflow(pat, workflow, inputs);
-        setMsg('✅ Triggered! Refreshing in 4s…');
+        setMsg('ok');
         setTimeout(loadRuns, 4000);
-      } catch(e) { setMsg(`❌ ${e.message}`); }
+      } catch(e) { setMsg(`err:${e.message}`); }
       finally { setLoading(false); }
     }
 
-    const icons = { completed:'✅', failure:'❌', in_progress:'⏳', queued:'🕐', cancelled:'⛔', skipped:'⏭️' };
+    // Run status → icon name + color
+    const runMeta = {
+      completed:   { icon:'checkCircle', cls:'text-emerald-500' },
+      failure:     { icon:'alertCircle', cls:'text-red-500'     },
+      in_progress: { icon:'clock',       cls:'text-blue-500'    },
+      queued:      { icon:'clock',       cls:'text-gray-400'    },
+      cancelled:   { icon:'x',          cls:'text-gray-400'    },
+      skipped:     { icon:'chevronRight',cls:'text-gray-300'    },
+    };
     const btnCls = {
       blue:   'bg-blue-600 hover:bg-blue-700 active:bg-blue-800',
       purple: 'bg-purple-600 hover:bg-purple-700 active:bg-purple-800',
     };
+    const iconBg = { blue:'bg-blue-100 text-blue-600', purple:'bg-purple-100 text-purple-600' };
 
     const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm";
 
     return (
       <Card className="p-5 flex flex-col">
         <div className="flex gap-3 mb-4">
-          <span className="text-2xl leading-none">{icon}</span>
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${iconBg[accentColor]||iconBg.blue}`}>
+            <Icon name={icon} size={16} />
+          </div>
           <div>
             <div className="font-bold text-gray-800 text-sm">{title}</div>
             <div className="text-xs text-gray-400 mt-0.5">{desc}</div>
@@ -877,19 +1279,29 @@
           </div>
         ))}
         <button onClick={run} disabled={loading}
-          className={`mt-auto w-full ${btnCls[accentColor]||btnCls.blue} disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors mt-3`}>
-          {loading ? '⏳ Triggering…' : '▶ Run Now'}
+          className={`mt-auto w-full ${btnCls[accentColor]||btnCls.blue} disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors mt-3 flex items-center justify-center gap-2`}>
+          {loading
+            ? <><Icon name="clock" size={14} cls="animate-spin" /><span>Triggering…</span></>
+            : <><Icon name="play" size={14} /><span>Run Now</span></>}
         </button>
-        {msg && <div className="mt-2 text-xs text-gray-500 font-medium">{msg}</div>}
+        {msg==='ok'      && <div className="mt-2 text-xs text-emerald-600 font-medium flex items-center gap-1"><Icon name="checkCircle" size={12} /> Triggered! Refreshing in 4s…</div>}
+        {msg==='no-pat'  && <div className="mt-2 text-xs text-amber-600 font-medium flex items-center gap-1"><Icon name="warn" size={12} /> Add GitHub PAT in Settings</div>}
+        {msg.startsWith('err:') && <div className="mt-2 text-xs text-red-500 font-medium flex items-center gap-1"><Icon name="alertCircle" size={12} /> {msg.slice(4)}</div>}
         {runs.length>0 && (
           <div className="mt-4 pt-4 border-t border-gray-50 space-y-1.5">
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Recent runs</div>
-            {runs.slice(0,4).map(r=>(
-              <div key={r.id} className="flex justify-between text-xs">
-                <span className="text-gray-600">{icons[r.conclusion||r.status]||'🔵'} {r.conclusion||r.status}</span>
-                <span className="text-gray-400">{fmtDate(r.created_at)}</span>
-              </div>
-            ))}
+            {runs.slice(0,4).map(r=>{
+              const key = r.conclusion||r.status;
+              const meta = runMeta[key]||{ icon:'activity', cls:'text-gray-400' };
+              return (
+                <div key={r.id} className="flex justify-between text-xs items-center">
+                  <span className={`flex items-center gap-1.5 font-medium ${meta.cls}`}>
+                    <Icon name={meta.icon} size={12} />{key}
+                  </span>
+                  <span className="text-gray-400">{fmtDate(r.created_at)}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
@@ -900,22 +1312,20 @@
     const pat = settings.github_pat;
     return (
       <div className="space-y-7">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Trigger GitHub Actions workflows</p>
-        </div>
+        <PageHeader icon="layers" title="Tasks" sub="Trigger GitHub Actions workflows" />
         {!pat && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 font-medium">
-            ⚠️ Configure your GitHub PAT in Settings to trigger workflows.
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 font-medium flex items-center gap-2">
+            <Icon name="warn" size={16} cls="shrink-0 text-amber-500" />
+            Configure your GitHub PAT in Settings to trigger workflows.
           </div>
         )}
 
         <div>
           <SectionLabel>IT Leader / CISO / FinOps Pipeline</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <WorkflowCard icon="📧" title="Send Emails" desc="Run the scheduled IT Leader / CISO / FinOps send"
+            <WorkflowCard icon="send" title="Send Emails" desc="Run the scheduled IT Leader / CISO / FinOps send"
               workflow="outreach.yml" pat={pat} accentColor="blue" />
-            <WorkflowCard icon="🔬" title="Process Prospects" desc="Research + generate email sequences (all ICPs)"
+            <WorkflowCard icon="search" title="Process Prospects" desc="Research + generate email sequences (all ICPs)"
               workflow="process.yml" pat={pat} accentColor="blue"
               fields={[{name:'batch',label:'Batch size',inputType:'number',default:'500',placeholder:'e.g. 500'}]} />
           </div>
@@ -924,9 +1334,9 @@
         <div>
           <SectionLabel>MSP Pipeline</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <WorkflowCard icon="🟣 📧" title="Send MSP Emails" desc="Run the scheduled MSP send (Mon–Fri)"
+            <WorkflowCard icon="briefcase" title="Send MSP Emails" desc="Run the scheduled MSP send (Mon–Fri)"
               workflow="msp-outreach.yml" pat={pat} accentColor="purple" />
-            <WorkflowCard icon="🟣 🔬" title="Process MSP Prospects" desc="Research + generate email sequences for MSPs"
+            <WorkflowCard icon="cpu" title="Process MSP Prospects" desc="Research + generate email sequences for MSPs"
               workflow="msp-process.yml" pat={pat} accentColor="purple"
               fields={[{name:'batch',label:'Batch size per chunk',inputType:'number',default:'10',placeholder:'e.g. 10'}]} />
           </div>
@@ -935,14 +1345,14 @@
         <div>
           <SectionLabel>Maintenance</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <WorkflowCard icon="🔁" title="Retry Failed" desc="Retry prospects with failed research or email gen"
+            <WorkflowCard icon="refresh" title="Retry Failed" desc="Retry prospects with failed research or email gen"
               workflow="retry.yml" pat={pat} accentColor="blue"
               fields={[
                 {name:'mode',label:'Mode',type:'select',default:'all',options:['all','research','emailgen']},
                 {name:'batch',label:'Batch size',inputType:'number',default:'100',placeholder:'100'},
                 {name:'filter',label:'Error filter (optional)',placeholder:'e.g. anthropic'},
               ]} />
-            <WorkflowCard icon="📊" title="Update Dashboard" desc="Refresh GitHub Pages with latest data"
+            <WorkflowCard icon="activity" title="Update Dashboard" desc="Refresh GitHub Pages with latest data"
               workflow="dashboard.yml" pat={pat} accentColor="blue" />
           </div>
         </div>
@@ -975,15 +1385,15 @@
     },[pat]);
 
     async function save(updated) {
-      if (!pat) { setMsg('❌ GitHub PAT required'); return; }
+      if (!pat) { setMsg('no-pat'); return; }
       setSaving(true); setMsg('');
       try {
         const res = await setFileContent(pat,'outreach_automation/icp_config.json', updated, sha,'Update ICP configuration');
         setIcps(updated);
         if (res?.content?.sha) setSha(res.content.sha);
-        setMsg('✅ Saved to GitHub');
+        setMsg('ok');
         setTimeout(()=>setMsg(''),3000);
-      } catch(e) { setMsg(`❌ ${e.message}`); }
+      } catch(e) { setMsg(`err:${e.message}`); }
       finally { setSaving(false); }
     }
 
@@ -1010,11 +1420,13 @@
             <p className="text-xs text-gray-400 mt-0.5">Saved to <code className="text-blue-600">icp_config.json</code></p>
           </div>
           <button onClick={()=>setAdding(!adding)}
-            className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold transition-colors">
-            + Add ICP
+            className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold transition-colors flex items-center gap-1.5">
+            <Icon name="plus" size={13} /><span>Add ICP</span>
           </button>
         </div>
-        {msg && <div className="mb-3 text-sm font-medium text-gray-600">{msg}</div>}
+        {msg==='ok'     && <div className="mb-3 text-sm font-medium text-emerald-600 flex items-center gap-1"><Icon name="checkCircle" size={14} /> Saved to GitHub</div>}
+        {msg==='no-pat' && <div className="mb-3 text-sm font-medium text-amber-600 flex items-center gap-1"><Icon name="warn" size={14} /> GitHub PAT required</div>}
+        {msg.startsWith&&msg.startsWith('err:') && <div className="mb-3 text-sm font-medium text-red-500 flex items-center gap-1"><Icon name="alertCircle" size={14} /> {msg.slice(4)}</div>}
         <div className="space-y-2 mb-4">
           {icps.map(icp=>(
             <div key={icp.id} className="flex items-start justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
@@ -1107,18 +1519,15 @@
       e.preventDefault();
       if (newPw.length<6) { setPwMsg('Min 6 characters'); return; }
       localStorage.setItem(LS.PASS, await sha256(newPw));
-      setNewPw(''); setPwMsg('✅ Password updated'); setTimeout(()=>setPwMsg(''),3000);
+      setNewPw(''); setPwMsg('ok'); setTimeout(()=>setPwMsg(''),3000);
     }
 
     return (
       <div className="max-w-2xl space-y-5">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Configure data sources and credentials</p>
-        </div>
+        <PageHeader icon="settings" title="Settings" sub="Configure data sources and credentials" />
         <form onSubmit={save} className="space-y-4">
           <Card className="p-6 space-y-4">
-            <h2 className="font-bold text-gray-800">🗄️ Database — Azure Blob</h2>
+            <h2 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="database" size={15} cls="text-gray-500" /> Database — Azure Blob</h2>
             <Field label="SAS URL" name="sas_url"
               placeholder="https://marketingoutreach.blob.core.windows.net/365tune-outreach?sp=r…"
               note="Needs Read (sp=r) permission. The dashboard fetches campaign_app.db directly from Azure Blob." />
@@ -1130,19 +1539,21 @@
           </Card>
 
           <Card className="p-6 space-y-4">
-            <h2 className="font-bold text-gray-800">🐙 GitHub</h2>
+            <h2 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="github" size={15} cls="text-gray-500" /> GitHub</h2>
             <Field label="GitHub PAT" name="github_pat" type="password"
               placeholder="ghp_xxxxxxxxxxxx"
               note="Needs repo + workflow scopes. Used to trigger workflows and manage ICP config." />
             <a href={`https://github.com/${OWNER}/${REPO}/settings/secrets/actions`} target="_blank"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
-              → Manage GitHub Secrets ↗
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center gap-1">
+              Manage GitHub Secrets <Icon name="link" size={11} />
             </a>
           </Card>
 
           <button type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-colors">
-            {saved ? '✅ Saved' : 'Save Settings'}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-2">
+            {saved
+              ? <><Icon name="check" size={14} /><span>Saved</span></>
+              : <span>Save Settings</span>}
           </button>
         </form>
 
@@ -1151,7 +1562,7 @@
         </Card>
 
         <Card className="p-6">
-          <h2 className="font-bold text-gray-800 mb-4">🔐 Change Password</h2>
+          <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Icon name="lock" size={15} cls="text-gray-500" /> Change Password</h2>
           <form onSubmit={changePw} className="flex gap-2 items-end">
             <div className="flex-1">
               <label className="text-xs font-bold text-gray-400 uppercase tracking-wide block mb-1.5">New password (min 6 chars)</label>
@@ -1161,7 +1572,8 @@
               Update
             </button>
           </form>
-          {pwMsg && <p className="text-sm mt-2 font-medium text-gray-600">{pwMsg}</p>}
+          {pwMsg==='ok'   && <p className="text-sm mt-2 font-medium text-emerald-600 flex items-center gap-1"><Icon name="checkCircle" size={14} /> Password updated</p>}
+          {pwMsg&&pwMsg!=='ok' && <p className="text-sm mt-2 font-medium text-red-500">{pwMsg}</p>}
         </Card>
       </div>
     );
@@ -1202,13 +1614,14 @@
         <main className="flex-1 p-7 overflow-auto min-w-0">
           {loadErr && (
             <div className="mb-5 bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700 font-medium flex justify-between items-start">
-              <span>❌ {loadErr}</span>
-              <button onClick={()=>setLoadErr('')} className="text-red-300 hover:text-red-500 transition-colors ml-3 shrink-0">✕</button>
+              <span className="flex items-center gap-2"><Icon name="alertCircle" size={15} cls="shrink-0" /> {loadErr}</span>
+              <button onClick={()=>setLoadErr('')} className="text-red-300 hover:text-red-500 transition-colors ml-3 shrink-0"><Icon name="x" size={14} /></button>
             </div>
           )}
           {page==='dashboard' && <DashboardPage db={db} />}
           {page==='prospects' && <ProspectsPage db={db} />}
           {page==='tasks'     && <TasksPage settings={settings} />}
+          {page==='inbox'     && <InboxPage db={db} />}
           {page==='settings'  && <SettingsPage settings={settings} onSave={handleSaveSettings} />}
         </main>
       </div>
