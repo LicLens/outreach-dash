@@ -800,13 +800,36 @@
     );
   }
 
-  function ProspectDrawer({ prospect, onClose }) {
+  function ProspectDrawer({ prospect, onClose, pat }) {
     const [tab, setTab] = useState('brief');
+    const [actionState, setActionState] = useState(null); // null | 'loading' | 'ok' | 'err'
+    const [actionMsg, setActionMsg]   = useState('');
     const open = !!prospect;
     let seq = [];
     try { if (prospect?.email_sequence) seq = JSON.parse(prospect.email_sequence); } catch {}
 
-    useEffect(() => { if (prospect) setTab('brief'); }, [prospect?.id]);
+    useEffect(() => { if (prospect) { setTab('brief'); setActionState(null); setActionMsg(''); } }, [prospect?.id]);
+
+    async function handleAction(mode) {
+      if (!pat) { setActionState('err'); setActionMsg('No GitHub PAT — add it in Settings.'); return; }
+      if (!prospect?.email) { setActionState('err'); setActionMsg('Prospect has no email address.'); return; }
+      setActionState('loading'); setActionMsg('');
+      try {
+        await triggerWorkflow(pat, 'reprocess.yml', {
+          icp:              prospect.icp || 'all',
+          mode,
+          batch:            '1',
+          prospect_email:   prospect.email,
+        });
+        setActionState('ok');
+        setActionMsg(mode === 'full' ? 'Re-research queued ✓' : 'Email regen queued ✓');
+      } catch(e) {
+        setActionState('err');
+        setActionMsg(e.message || 'Workflow trigger failed.');
+      }
+    }
+
+    const canAct = prospect?.emails_sent === 0 || !prospect?.emails_sent;
 
     return (
       <>
@@ -841,6 +864,27 @@
                 {prospect.error_msg && (
                   <div className="mt-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-xs text-red-700 break-words">{prospect.error_msg}</div>
                 )}
+
+                {/* ── Action buttons ── */}
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-50">
+                  <button
+                    onClick={()=>handleAction('emails')}
+                    disabled={actionState==='loading' || !canAct}
+                    title={!canAct ? 'Cannot reset — emails already sent' : 'Regenerate email sequence (keep research)'}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <Icon name="mail" size={12} />Regen Emails
+                  </button>
+                  <button
+                    onClick={()=>handleAction('full')}
+                    disabled={actionState==='loading' || !canAct}
+                    title={!canAct ? 'Cannot reset — emails already sent' : 'Re-research + regenerate everything'}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-200 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <Icon name="refresh" size={12} />Re-research
+                  </button>
+                  {actionState==='loading' && <span className="text-xs text-gray-400 ml-1 animate-pulse">Queuing…</span>}
+                  {actionState==='ok'      && <span className="text-xs text-green-600 font-semibold ml-1 flex items-center gap-1"><Icon name="checkCircle" size={12} />{actionMsg}</span>}
+                  {actionState==='err'     && <span className="text-xs text-red-600 font-medium ml-1 flex items-center gap-1"><Icon name="warn" size={12} />{actionMsg}</span>}
+                </div>
               </div>
             </div>
             {/* Tabs */}
@@ -875,7 +919,7 @@
   }
 
   // ── Prospects Table ───────────────────────────────────────────────────────
-  function ProspectsPage({ db }) {
+  function ProspectsPage({ db, pat }) {
     const [page, setPage] = useState(0);
     const [search, setSearch] = useState('');
     const [icpF, setIcpF] = useState('');
@@ -883,12 +927,18 @@
     const [angleF, setAngleF] = useState('');
     const [debSearch, setDebSearch] = useState('');
     const [selected, setSelected] = useState(null);
+    // Bulk selection: Set of prospect email strings
+    const [checkedEmails, setCheckedEmails] = useState(new Set());
+    const [bulkState, setBulkState] = useState(null); // null | 'loading' | 'ok' | 'err'
+    const [bulkMsg, setBulkMsg]    = useState('');
 
     useEffect(() => {
       const t = setTimeout(()=>{ setDebSearch(search); setPage(0); }, 300);
       return ()=>clearTimeout(t);
     }, [search]);
     useEffect(()=>setPage(0), [icpF, statusF, angleF]);
+    // Clear selection when page/filters change
+    useEffect(()=>setCheckedEmails(new Set()), [page, debSearch, icpF, statusF, angleF]);
 
     const { total, rows, error } = useMemo(()=>{
       if (!db) return { total:0, rows:[], error:null };
@@ -899,6 +949,49 @@
     if (!db) return <EmptyState icon="users" title="Load DB to view prospects" />;
 
     const filterCls = "border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-gray-700 focus:border-blue-500";
+
+    // Rows eligible for reset (no emails sent yet)
+    const eligibleRows = rows.filter(p => !p.emails_sent || p.emails_sent === 0);
+    const pageEmails   = eligibleRows.map(p => p.email).filter(Boolean);
+    const allPageChecked = pageEmails.length > 0 && pageEmails.every(e => checkedEmails.has(e));
+
+    function toggleRow(email) {
+      setCheckedEmails(prev => {
+        const next = new Set(prev);
+        next.has(email) ? next.delete(email) : next.add(email);
+        return next;
+      });
+    }
+    function togglePage() {
+      if (allPageChecked) {
+        setCheckedEmails(prev => { const n=new Set(prev); pageEmails.forEach(e=>n.delete(e)); return n; });
+      } else {
+        setCheckedEmails(prev => { const n=new Set(prev); pageEmails.forEach(e=>n.add(e)); return n; });
+      }
+    }
+
+    async function handleBulkAction(mode) {
+      if (!pat) { setBulkState('err'); setBulkMsg('No GitHub PAT — add it in Settings.'); return; }
+      const emails = [...checkedEmails];
+      if (!emails.length) return;
+      setBulkState('loading'); setBulkMsg('');
+      try {
+        await triggerWorkflow(pat, 'reprocess.yml', {
+          icp:             'all',
+          mode,
+          batch:           String(emails.length),
+          prospect_email:  emails.join(','),
+        });
+        setBulkState('ok');
+        setBulkMsg(`${mode === 'full' ? 'Re-research' : 'Email regen'} queued for ${emails.length} prospect${emails.length>1?'s':''} ✓`);
+        setCheckedEmails(new Set());
+      } catch(e) {
+        setBulkState('err');
+        setBulkMsg(e.message || 'Workflow trigger failed.');
+      }
+    }
+
+    const checkedCount = checkedEmails.size;
 
     return (
       <div className="space-y-5">
@@ -945,13 +1038,42 @@
           </div>
         </Card>
 
+        {/* Bulk action bar — only visible when prospects are checked */}
+        {checkedCount > 0 && (
+          <div className="sticky top-4 z-10 bg-white border border-blue-200 rounded-2xl shadow-lg px-5 py-3 flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-semibold text-blue-700">{checkedCount} selected</span>
+            <div className="flex-1" />
+            <button onClick={()=>handleBulkAction('emails')} disabled={bulkState==='loading'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-200 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 transition-colors">
+              <Icon name="mail" size={12} />Regen Emails
+            </button>
+            <button onClick={()=>handleBulkAction('full')} disabled={bulkState==='loading'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-200 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 disabled:opacity-50 transition-colors">
+              <Icon name="refresh" size={12} />Re-research
+            </button>
+            {bulkState==='loading' && <span className="text-xs text-gray-400 animate-pulse">Queuing…</span>}
+            {bulkState==='ok'      && <span className="text-xs text-green-600 font-semibold flex items-center gap-1"><Icon name="checkCircle" size={12} />{bulkMsg}</span>}
+            {bulkState==='err'     && <span className="text-xs text-red-600 font-medium flex items-center gap-1"><Icon name="warn" size={12} />{bulkMsg}</span>}
+            <button onClick={()=>{ setCheckedEmails(new Set()); setBulkState(null); }}
+              className="ml-auto p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50/80 text-left text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
-                  <th className="px-5 py-3.5">Name</th>
+                  <th className="px-4 py-3.5 w-10">
+                    <input type="checkbox" checked={allPageChecked} onChange={togglePage}
+                      disabled={pageEmails.length===0}
+                      className="rounded border-gray-300 text-blue-600 cursor-pointer disabled:opacity-30"
+                      title="Select all eligible on this page" />
+                  </th>
+                  <th className="px-4 py-3.5">Name</th>
                   <th className="px-4 py-3.5">Company</th>
                   <th className="px-4 py-3.5">Title</th>
                   <th className="px-4 py-3.5">ICP</th>
@@ -962,34 +1084,46 @@
                 </tr>
               </thead>
               <tbody>
-                {rows.map(p=>(
-                  <tr key={p.id} onClick={()=>setSelected(p)}
-                    className="border-t border-gray-50 hover:bg-blue-50/40 cursor-pointer transition-colors group">
-                    <td className="px-5 py-3.5">
-                      <div className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{p.first_name} {p.last_name}</div>
-                    </td>
-                    <td className="px-4 py-3.5 text-gray-600 font-medium">{p.company||'—'}</td>
-                    <td className="px-4 py-3.5 text-gray-400 max-w-[180px] truncate text-xs">{p.title||'—'}</td>
-                    <td className="px-4 py-3.5">
-                      <Badge label={ICP_LABELS[p.icp]||p.icp} cls={ICP_COLORS[p.icp]||'bg-gray-100 text-gray-700'} />
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Badge label={`${p.angle||'A'}`} cls={ANGLE_COLORS[p.angle||'A']} />
-                      <div className="text-xs text-gray-400 mt-0.5">{angleLabel(p.icp, p.angle||'A')}</div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Badge label={STATUS_LABELS[p.status]||p.status} cls={STATUS_COLORS[p.status]||STATUS_COLORS.pending} />
-                    </td>
-                    <td className="px-4 py-3.5">
-                      {p.emails_sent > 0
-                        ? <span className="text-gray-700 font-semibold">{p.emails_sent}<span className="text-gray-300 font-normal">/5</span></span>
-                        : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3.5 text-gray-400 text-xs font-medium">{p.next_send||'—'}</td>
-                  </tr>
-                ))}
+                {rows.map(p=>{
+                  const eligible = !p.emails_sent || p.emails_sent === 0;
+                  const isChecked = checkedEmails.has(p.email);
+                  return (
+                    <tr key={p.id}
+                      className={`border-t border-gray-50 hover:bg-blue-50/40 cursor-pointer transition-colors group ${isChecked ? 'bg-blue-50/60' : ''}`}>
+                      <td className="px-4 py-3.5" onClick={e=>e.stopPropagation()}>
+                        <input type="checkbox"
+                          checked={isChecked}
+                          disabled={!eligible || !p.email}
+                          onChange={()=>toggleRow(p.email)}
+                          className="rounded border-gray-300 text-blue-600 cursor-pointer disabled:opacity-20"
+                          title={!eligible ? 'Cannot reset — emails already sent' : ''} />
+                      </td>
+                      <td className="px-4 py-3.5" onClick={()=>setSelected(p)}>
+                        <div className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{p.first_name} {p.last_name}</div>
+                      </td>
+                      <td className="px-4 py-3.5 text-gray-600 font-medium" onClick={()=>setSelected(p)}>{p.company||'—'}</td>
+                      <td className="px-4 py-3.5 text-gray-400 max-w-[180px] truncate text-xs" onClick={()=>setSelected(p)}>{p.title||'—'}</td>
+                      <td className="px-4 py-3.5" onClick={()=>setSelected(p)}>
+                        <Badge label={ICP_LABELS[p.icp]||p.icp} cls={ICP_COLORS[p.icp]||'bg-gray-100 text-gray-700'} />
+                      </td>
+                      <td className="px-4 py-3.5" onClick={()=>setSelected(p)}>
+                        <Badge label={`${p.angle||'A'}`} cls={ANGLE_COLORS[p.angle||'A']} />
+                        <div className="text-xs text-gray-400 mt-0.5">{angleLabel(p.icp, p.angle||'A')}</div>
+                      </td>
+                      <td className="px-4 py-3.5" onClick={()=>setSelected(p)}>
+                        <Badge label={STATUS_LABELS[p.status]||p.status} cls={STATUS_COLORS[p.status]||STATUS_COLORS.pending} />
+                      </td>
+                      <td className="px-4 py-3.5" onClick={()=>setSelected(p)}>
+                        {p.emails_sent > 0
+                          ? <span className="text-gray-700 font-semibold">{p.emails_sent}<span className="text-gray-300 font-normal">/5</span></span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3.5 text-gray-400 text-xs font-medium" onClick={()=>setSelected(p)}>{p.next_send||'—'}</td>
+                    </tr>
+                  );
+                })}
                 {rows.length===0 && (
-                  <tr><td colSpan="8" className="px-5 py-12 text-center text-gray-400 text-sm">No prospects match your filters</td></tr>
+                  <tr><td colSpan="9" className="px-5 py-12 text-center text-gray-400 text-sm">No prospects match your filters</td></tr>
                 )}
               </tbody>
             </table>
@@ -1013,8 +1147,78 @@
             </div>
           )}
         </Card>
-        <ProspectDrawer prospect={selected} onClose={()=>setSelected(null)} />
+        <ProspectDrawer prospect={selected} onClose={()=>setSelected(null)} pat={pat} />
       </div>
+    );
+  }
+
+  // ── Sent Email Drawer ─────────────────────────────────────────────────────
+  function SentEmailDrawer({ item, onClose }) {
+    const open = !!item;
+    let email = null;
+    if (item) {
+      try {
+        const seq = JSON.parse(item.email_sequence || '[]');
+        email = seq[(item.email_number || 1) - 1] || null;
+      } catch {}
+    }
+    const subject = email?.subject || '—';
+    const displaySubj = item?.email_number > 1 ? `Re: ${subjectFromSequence(item?.email_sequence, 1)}` : subject;
+
+    return (
+      <>
+        {open && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-20" onClick={onClose} />}
+        <div className={`slide-drawer fixed top-0 right-0 h-full w-full max-w-2xl bg-white shadow-2xl z-30 flex flex-col ${open ? 'open' : ''}`}>
+          {item && <>
+            <div className="border-b border-gray-100">
+              <div className="h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
+              <div className="px-6 py-5">
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0">
+                    <div className="font-bold text-gray-900 text-lg leading-tight">
+                      {item.first_name} {item.last_name}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">{item.prospect_email}</div>
+                    <div className="text-sm text-gray-500 mt-0.5">{item.company||''}</div>
+                    <div className="flex flex-wrap gap-1.5 mt-2.5">
+                      <Badge label={ICP_LABELS[item.icp]||item.icp} cls={ICP_COLORS[item.icp]||'bg-gray-100 text-gray-700'} />
+                      <Badge label={`Email ${item.email_number}/5`} cls="bg-blue-100 text-blue-700 ring-1 ring-blue-200" />
+                      {item.sent_at && (
+                        <Badge label={new Date(item.sent_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+                          cls="bg-gray-100 text-gray-600" />
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={onClose} className="text-gray-300 hover:text-gray-600 transition-colors ml-4 shrink-0 p-1.5 rounded-lg hover:bg-gray-100">
+                    <Icon name="x" size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Subject */}
+              <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Subject</div>
+                <div className="text-sm font-semibold text-gray-800">{displaySubj}</div>
+              </div>
+
+              {/* Preview / Hook */}
+              {email?.preview && (
+                <div className="text-xs text-gray-500 italic bg-blue-50/50 border-l-2 border-blue-200 pl-3 py-1.5 rounded-r">
+                  {email.preview}
+                </div>
+              )}
+
+              {/* Body */}
+              {email?.body
+                ? <pre className="text-sm text-gray-700 leading-relaxed bg-white border border-gray-100 rounded-xl p-5 shadow-sm">{email.body}</pre>
+                : <EmptyState icon="mail" title="Email body not available" />
+              }
+            </div>
+          </>}
+        </div>
+      </>
     );
   }
 
@@ -1094,6 +1298,7 @@
     const [sentSearch, setSentSearch] = useState('');
     const [sentIcp, setSentIcp] = useState('');
     const [debSentSearch, setDebSentSearch] = useState('');
+    const [selectedSent, setSelectedSent] = useState(null);
 
     useEffect(() => {
       const t = setTimeout(()=>{ setDebSentSearch(sentSearch); setSentPage(0); }, 300);
@@ -1196,12 +1401,13 @@
                       // Follow-up emails are sent as Re: <original>
                       const displaySubj = r.email_number > 1 ? `Re: ${subjectFromSequence(r.email_sequence, 1)}` : subj;
                       return (
-                        <tr key={r.id} className="border-t border-gray-50 hover:bg-blue-50/30 transition-colors">
+                        <tr key={r.id} onClick={()=>setSelectedSent(r)}
+                          className="border-t border-gray-50 hover:bg-blue-50/40 cursor-pointer transition-colors group">
                           <td className="px-5 py-3.5 text-xs text-gray-500 font-medium whitespace-nowrap">
                             {r.sent_at ? new Date(r.sent_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—'}
                           </td>
                           <td className="px-4 py-3.5">
-                            <div className="font-semibold text-gray-800 text-sm">{r.first_name} {r.last_name}</div>
+                            <div className="font-semibold text-gray-800 text-sm group-hover:text-blue-700 transition-colors">{r.first_name} {r.last_name}</div>
                             <div className="text-xs text-gray-400">{r.prospect_email}</div>
                           </td>
                           <td className="px-4 py-3.5 text-gray-600 font-medium text-sm">{r.company||'—'}</td>
@@ -1244,6 +1450,7 @@
             </Card>
           </div>
         )}
+        <SentEmailDrawer item={selectedSent} onClose={()=>setSelectedSent(null)} />
       </div>
     );
   }
@@ -1670,7 +1877,7 @@
             </div>
           )}
           {page==='dashboard' && <DashboardPage db={db} />}
-          {page==='prospects' && <ProspectsPage db={db} />}
+          {page==='prospects' && <ProspectsPage db={db} pat={settings.github_pat} />}
           {page==='tasks'     && <TasksPage settings={settings} />}
           {page==='inbox'     && <InboxPage db={db} />}
           {page==='settings'  && <SettingsPage settings={settings} onSave={handleSaveSettings} />}
